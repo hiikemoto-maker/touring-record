@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🏍️ ツーリング記録帳</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #e94560, #0f3460);
+      padding: 20px 24px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    header h1 { font-size: 1.8rem; letter-spacing: 2px; }
+    header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 4px; }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    /* ---- タブ ---- */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+      background: #16213e;
+      color: #aaa;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #e94560;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* ---- フォーム ---- */
+    .card {
+      background: #16213e;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 8px;
+      color: #eee;
+      padding: 10px 14px;
+      font-size: 1rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: #e94560;
+    }
+    textarea { resize: vertical; min-height: 90px; }
+
+    .row2 { display: flex; gap: 12px; }
+    .row2 .form-group { flex: 1; }
+
+    /* 立ち寄り地 */
+    .stop-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+    .stop-card {
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 10px;
+      padding: 12px;
+      position: relative;
+    }
+    .stop-card input  { margin-bottom: 8px; }
+    .stop-card textarea { min-height: 60px; resize: vertical; }
+    .stop-stars { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+    .stop-star {
+      font-size: 1.3rem;
+      cursor: pointer;
+      color: #444;
+      transition: color 0.15s;
+      user-select: none;
+    }
+    .stop-star.on { color: #f5a623; }
+    .btn-remove-stop {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: 1px solid #555;
+      color: #aaa;
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      font-size: 1rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: all 0.2s;
+    }
+    .btn-remove-stop:hover { border-color: #e94560; color: #e94560; }
+    .btn-add-stop {
+      background: none;
+      border: 1px dashed #2a4a7f;
+      color: #aaa;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .btn-add-stop:hover { border-color: #e94560; color: #e94560; }
+
+    /* 燃費バー */
+    .fuel-eff-bar {
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      color: #aaa;
+      margin-top: -10px;
+      margin-bottom: 18px;
+    }
+    .fuel-eff-bar span { color: #f5a623; font-weight: bold; font-size: 1.1rem; }
+
+    /* 自動計算ボタン */
+    .km-row { display: flex; gap: 8px; align-items: flex-end; }
+    .km-row input { flex: 1; }
+    .btn-calc {
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      color: #aaa;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      height: 42px;
+    }
+    .btn-calc:hover:not(:disabled) { border-color: #e94560; color: #e94560; }
+    .btn-calc:disabled { opacity: 0.5; cursor: default; }
+
+    /* Google Mapsボタン */
+    .btn-gmap {
+      width: 100%;
+      background: #0f3460;
+      border: 1px solid #4285f4;
+      color: #4285f4;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-bottom: 18px;
+      transition: all 0.2s;
+      font-weight: bold;
+    }
+    .btn-gmap:hover { background: #4285f4; color: #fff; }
+    .btn-gmap-small {
+      display: inline-block;
+      background: none;
+      border: 1px solid #4285f4;
+      color: #4285f4;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      margin-right: 8px;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .btn-gmap-small:hover { background: #4285f4; color: #fff; }
+
+    /* 場所横の小さなマップアイコンボタン */
+    .place-row { display: flex; gap: 6px; align-items: stretch; }
+    .place-row input { flex: 1; }
+    .btn-map-pin {
+      background: #0f3460;
+      border: 1px solid #4285f4;
+      color: #4285f4;
+      border-radius: 8px;
+      width: 42px;
+      height: 42px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      line-height: 1;
+    }
+    .btn-map-pin:hover { background: #4285f4; color: #fff; }
+    .btn-map-pin:disabled { opacity: 0.4; cursor: default; }
+    .stop-card .place-row { margin-bottom: 8px; }
+
+    /* ルート表示（一覧） */
+    .route-flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+    .route-flow .place { color: #ccc; }
+    .route-flow .arrow { color: #e94560; font-size: 0.75rem; }
+
+    /* 星評価 */
+    .stars { display: flex; gap: 6px; margin-top: 4px; }
+    .star {
+      font-size: 1.6rem;
+      cursor: pointer;
+      color: #444;
+      transition: color 0.15s;
+      user-select: none;
+    }
+    .star.on { color: #f5a623; }
+
+    /* 写真アップロード */
+    .photo-area {
+      border: 2px dashed #2a4a7f;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .photo-area:hover { border-color: #e94560; }
+    .photo-area input { display: none; }
+    #photo-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    #photo-preview img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid #e94560;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+
+    /* ---- 記録一覧 ---- */
+    #tab-list { display: none; }
+
+    .stats-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-box {
+      flex: 1;
+      background: #16213e;
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-box .num {
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: #e94560;
+    }
+    .stat-box .lbl {
+      font-size: 0.75rem;
+      color: #aaa;
+      margin-top: 2px;
+    }
+
+    .search-bar {
+      background: #16213e;
+      border-radius: 10px;
+      padding: 10px 14px;
+      width: 100%;
+      border: 1px solid #2a4a7f;
+      color: #eee;
+      font-size: 0.95rem;
+      outline: none;
+      margin-bottom: 16px;
+    }
+    .search-bar:focus { border-color: #e94560; }
+
+    .record-card {
+      background: #16213e;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      position: relative;
+      border-left: 4px solid #e94560;
+    }
+    .record-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .record-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #e94560;
+    }
+    .record-date {
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+    .record-meta {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+    .record-meta span { display: flex; align-items: center; gap: 4px; }
+    .record-memo {
+      font-size: 0.9rem;
+      color: #ccc;
+      line-height: 1.6;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+    .record-photos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .record-photos img {
+      width: 70px;
+      height: 70px;
+      object-fit: cover;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .record-photos img:hover { transform: scale(1.08); }
+
+    .record-stars { color: #f5a623; font-size: 1rem; margin-bottom: 8px; }
+
+    .btn-delete {
+      background: none;
+      border: 1px solid #555;
+      color: #aaa;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-delete:hover { border-color: #e94560; color: #e94560; }
+
+    .empty-state {
+      text-align: center;
+      color: #555;
+      padding: 60px 20px;
+      font-size: 1rem;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* ---- 写真拡大モーダル ---- */
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.open { display: flex; }
+    .modal img {
+      max-width: 90vw;
+      max-height: 85vh;
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(0,0,0,0.6);
+    }
+    .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      font-size: 2rem;
+      color: #fff;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    /* トースト */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #e94560;
+      color: #fff;
+      padding: 12px 28px;
+      border-radius: 30px;
+      font-size: 0.95rem;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: transform 0.3s;
+      z-index: 200;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+  <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>🏍️ ツーリング記録帳</h1>
+  <p>あなたの走った道を、ずっと残そう</p>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('add')">✏️ 記録を追加</button>
+    <button class="tab-btn" onclick="switchTab('list')">📖 記録を見る</button>
+  </div>
+
+  <!-- ===== 追加フォーム ===== -->
+  <div id="tab-add">
+    <div class="card">
+      <div class="form-group">
+        <label>📌 タイトル</label>
+        <input type="text" id="f-title" placeholder="例：初夏の箱根ツーリング" />
+      </div>
+
+      <div class="row2">
+        <div class="form-group">
+          <label>📅 出発日</label>
+          <input type="date" id="f-date-from" oninput="updateDays()" />
+        </div>
+        <div class="form-group">
+          <label>🏁 帰宅日</label>
+          <input type="date" id="f-date-to" oninput="updateDays()" />
+        </div>
+      </div>
+      <div class="fuel-eff-bar" id="days-bar" style="display:none;">
+        🗓️ <span id="days-val"></span>
+      </div>
+
+      <div class="row2">
+        <div class="form-group">
+          <label>🗺️ 出発地</label>
+          <div class="place-row">
+            <input type="text" id="f-from" placeholder="例：自宅（東京）" />
+            <button type="button" class="btn-map-pin" onclick="openGMapSingle(document.getElementById('f-from').value)" title="Google Mapsで開く">🗺️</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>📍 目的地</label>
+          <div class="place-row">
+            <input type="text" id="f-to" placeholder="例：箱根" />
+            <button type="button" class="btn-map-pin" onclick="openGMapSingle(document.getElementById('f-to').value)" title="Google Mapsで開く">🗺️</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>🚩 立ち寄り地（何箇所でも追加できます）</label>
+        <div class="stop-list" id="stop-list"></div>
+        <button type="button" class="btn-add-stop" onclick="addStop()">＋ 立ち寄り地を追加</button>
+      </div>
+
+      <button type="button" class="btn-gmap" onclick="openGMapRoute()">🗺️ Google Mapsでルートを確認</button>
+
+      <div class="row2">
+        <div class="form-group">
+          <label>🛣️ 走行距離（km）</label>
+          <div class="km-row">
+            <input type="number" id="f-km" placeholder="例：250" min="0" oninput="updateFuelEff()" />
+            <button type="button" class="btn-calc" id="btn-calc" onclick="calcDistance()">🔄 自動計算</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>🌤️ 天気</label>
+          <select id="f-weather">
+            <option value="☀️ 晴れ">☀️ 晴れ</option>
+            <option value="⛅ 曇り">⛅ 曇り</option>
+            <option value="🌧️ 雨">🌧️ 雨</option>
+            <option value="❄️ 雪">❄️ 雪</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="form-group">
+          <label>⛽ 給油量（L）</label>
+          <input type="number" id="f-fuel" placeholder="例：12.5" min="0" step="0.1" oninput="updateFuelEff()" />
+        </div>
+        <div class="form-group">
+          <label>💴 ガソリン代（円）</label>
+          <input type="number" id="f-fuel-cost" placeholder="例：2200" min="0" />
+        </div>
+      </div>
+      <div class="fuel-eff-bar" id="fuel-eff-bar" style="display:none;">
+        ⚡ 燃費：<span id="fuel-eff-val"></span> km/L
+      </div>
+
+      <div class="form-group">
+        <label>⭐ 満足度</label>
+        <div class="stars" id="stars">
+          <span class="star" data-v="1">★</span>
+          <span class="star" data-v="2">★</span>
+          <span class="star" data-v="3">★</span>
+          <span class="star" data-v="4">★</span>
+          <span class="star" data-v="5">★</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>📝 感想・メモ</label>
+        <textarea id="f-memo" placeholder="道の状況、おすすめスポット、食べたもの、次回また行きたい場所など…"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>📷 写真（複数選択OK）</label>
+        <div class="photo-area" onclick="document.getElementById('f-photo').click()">
+          <div>タップして写真を選ぶ</div>
+          <div style="font-size:0.8rem;color:#666;margin-top:4px;">JPG・PNG など</div>
+          <input type="file" id="f-photo" accept="image/*,.heic,.heif" multiple onchange="previewPhotos(event)" />
+        </div>
+        <div id="photo-preview"></div>
+      </div>
+
+      <button class="btn-primary" onclick="saveRecord()">💾 記録を保存する</button>
+    </div>
+  </div>
+
+  <!-- ===== 一覧 ===== -->
+  <div id="tab-list">
+    <div class="stats-bar">
+      <div class="stat-box">
+        <div class="num" id="stat-count">0</div>
+        <div class="lbl">ツーリング回数</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-km">0</div>
+        <div class="lbl">総走行距離 km</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-days">0</div>
+        <div class="lbl">総ツーリング日数</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-cost">0</div>
+        <div class="lbl">総ガソリン代 円</div>
+      </div>
+    </div>
+    <input class="search-bar" id="search" type="text" placeholder="🔍 目的地・感想で検索…" oninput="renderList()" />
+    <div id="record-list"></div>
+  </div>
+</div>
+
+<!-- 写真モーダル -->
+<div class="modal" id="modal" onclick="closeModal()">
+  <span class="modal-close">✕</span>
+  <img id="modal-img" src="" alt="" />
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let rating = 0;
+  let photoData = [];
+
+  // 立ち寄り地
+  function addStop(name = '', memo = '', rating = 0) {
+    const list = document.getElementById('stop-list');
+    const idx  = Date.now();
+    const card = document.createElement('div');
+    card.className = 'stop-card';
+    card.dataset.id = idx;
+    card.innerHTML = `
+      <button type="button" class="btn-remove-stop" onclick="removeStop(${idx})">×</button>
+      <div class="place-row">
+        <input type="text" class="stop-name" placeholder="📍 場所の名前（例：道の駅 足柄）" value="${name}" />
+        <button type="button" class="btn-map-pin" onclick="openGMapSingle(this.previousElementSibling.value)" title="Google Mapsで開く">🗺️</button>
+      </div>
+      <div class="stop-stars">
+        <span style="font-size:0.8rem;color:#aaa;">満足度：</span>
+        ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}" onclick="setStopRating(this, ${idx})">★</span>`).join('')}
+      </div>
+      <textarea class="stop-memo" placeholder="感想・メモ（例：ソフトクリームが絶品！景色も最高だった）">${memo}</textarea>
+    `;
+    list.appendChild(card);
+  }
+
+  function setStopRating(el, idx) {
+    const v = parseInt(el.dataset.v);
+    el.closest('.stop-card').querySelectorAll('.stop-star').forEach(s => {
+      s.classList.toggle('on', parseInt(s.dataset.v) <= v);
+    });
+  }
+
+  function removeStop(idx) {
+    const card = document.querySelector(`.stop-card[data-id="${idx}"]`);
+    if (card) card.remove();
+  }
+
+  function getStops() {
+    return Array.from(document.querySelectorAll('#stop-list .stop-card')).map(card => {
+      const onStars = card.querySelectorAll('.stop-star.on');
+      return {
+        name:   card.querySelector('.stop-name').value.trim(),
+        memo:   card.querySelector('.stop-memo').value.trim(),
+        rating: onStars.length
+      };
+    }).filter(s => s.name);
+  }
+
+  // Google Maps連携
+  function buildGMapUrl(from, stops, to) {
+    const stopList = (stops || []).map(s => s.name || s).filter(n => n);
+    if (!from && !stopList.length && !to) return null;
+    if (from && to) {
+      let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}`;
+      if (stopList.length) url += `&waypoints=${stopList.map(encodeURIComponent).join('|')}`;
+      return url;
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(to || from || stopList[0])}`;
+  }
+
+  function openGMapSingle(place) {
+    const name = (place || '').trim();
+    if (!name) { showToast('場所を入力してください'); return; }
+    openInNewTab(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`);
+  }
+
+  function openInNewTab(url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  function openGMapRoute() {
+    const from = document.getElementById('f-from').value.trim();
+    const to   = document.getElementById('f-to').value.trim();
+    const stops = getStops();
+    const url = buildGMapUrl(from, stops, to);
+    if (!url) { showToast('場所を入力してください'); return; }
+    openInNewTab(url);
+  }
+
+  function openGMapRecord(id) {
+    const r = getRecords().find(x => x.id === id);
+    if (!r) return;
+    const url = buildGMapUrl(r.from, r.stops, r.to);
+    if (url) openInNewTab(url);
+  }
+
+  // 走行距離の自動計算
+  async function geocode(place) {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`,
+      { headers: { 'Accept-Language': 'ja' } }
+    );
+    const data = await res.json();
+    if (!data.length) throw new Error(`「${place}」の場所が見つかりませんでした`);
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  }
+
+  async function calcDistance() {
+    const from = document.getElementById('f-from').value.trim();
+    const to   = document.getElementById('f-to').value.trim();
+    if (!from || !to) { showToast('出発地と目的地を入力してください'); return; }
+
+    const stopNames = getStops().map(s => s.name).filter(n => n);
+    const places    = [from, ...stopNames, to];
+
+    const btn = document.getElementById('btn-calc');
+    btn.textContent = '計算中…';
+    btn.disabled = true;
+
+    try {
+      const coords   = await Promise.all(places.map(p => geocode(p)));
+      const coordStr = coords.map(c => `${c.lon},${c.lat}`).join(';');
+      const res      = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=false`
+      );
+      const data = await res.json();
+      if (data.code !== 'Ok') throw new Error('ルートを計算できませんでした');
+      const km = Math.round(data.routes[0].distance / 1000);
+      document.getElementById('f-km').value = km;
+      showToast(`🛣️ 走行距離：約 ${km} km`);
+    } catch (e) {
+      showToast('⚠️ ' + e.message);
+    } finally {
+      btn.textContent = '🔄 自動計算';
+      btn.disabled = false;
+    }
+  }
+
+  // 燃費の自動表示
+  function updateFuelEff() {
+    const km   = parseFloat(document.getElementById('f-km').value);
+    const fuel = parseFloat(document.getElementById('f-fuel').value);
+    const bar  = document.getElementById('fuel-eff-bar');
+    if (km > 0 && fuel > 0) {
+      document.getElementById('fuel-eff-val').textContent = (km / fuel).toFixed(1);
+      bar.style.display = 'block';
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
+  // 日数の自動表示
+  function updateDays() {
+    const from = document.getElementById('f-date-from').value;
+    const to   = document.getElementById('f-date-to').value;
+    const bar  = document.getElementById('days-bar');
+    if (from && to && to >= from) {
+      const diff = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+      document.getElementById('days-val').textContent = diff === 1 ? '日帰り' : `${diff}日間`;
+      bar.style.display = 'block';
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
+  // 今日の日付をデフォルトに
+  document.getElementById('f-date-from').valueAsDate = new Date();
+  document.getElementById('f-date-to').valueAsDate   = new Date();
+
+  // 星評価
+  document.querySelectorAll('.star').forEach(s => {
+    s.addEventListener('click', () => {
+      rating = parseInt(s.dataset.v);
+      document.querySelectorAll('.star').forEach(x => {
+        x.classList.toggle('on', parseInt(x.dataset.v) <= rating);
+      });
+    });
+  });
+
+  // 写真プレビュー（HEIC/HEIF自動変換対応）
+  async function previewPhotos(e) {
+    photoData = [];
+    const preview = document.getElementById('photo-preview');
+    preview.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">読み込み中…</span>';
+    const files = Array.from(e.target.files);
+
+    const results = await Promise.all(files.map(async file => {
+      const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
+        || /\.(heic|heif)$/i.test(file.name);
+      if (isHeic) {
+        const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+        return await readAsDataURL(Array.isArray(blob) ? blob[0] : blob);
+      }
+      return await readAsDataURL(file);
+    }));
+
+    preview.innerHTML = '';
+    results.forEach(dataUrl => {
+      photoData.push(dataUrl);
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      preview.appendChild(img);
+    });
+  }
+
+  function readAsDataURL(blob) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target.result);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // 保存
+  function saveRecord() {
+    const title    = document.getElementById('f-title').value.trim();
+    const dateFrom = document.getElementById('f-date-from').value;
+    const dateTo   = document.getElementById('f-date-to').value;
+    const from     = document.getElementById('f-from').value.trim();
+    const to      = document.getElementById('f-to').value.trim();
+    const km       = document.getElementById('f-km').value;
+    const fuel     = document.getElementById('f-fuel').value;
+    const fuelCost = document.getElementById('f-fuel-cost').value;
+    const weather  = document.getElementById('f-weather').value;
+    const memo     = document.getElementById('f-memo').value.trim();
+
+    if (!dateFrom || !to) {
+      showToast('出発日と目的地は必須です！');
+      return;
+    }
+
+    const record = {
+      id: Date.now(),
+      title, dateFrom, dateTo, from, to,
+      stops: getStops(),
+      km:       km       ? parseInt(km)         : null,
+      fuel:     fuel     ? parseFloat(fuel)     : null,
+      fuelCost: fuelCost ? parseInt(fuelCost)   : null,
+      weather,
+      rating,
+      memo,
+      photos: [...photoData]
+    };
+
+    const list = getRecords();
+    list.unshift(record);
+    localStorage.setItem('touring_records', JSON.stringify(list));
+
+    // リセット
+    document.getElementById('f-title').value     = '';
+    document.getElementById('f-date-from').valueAsDate = new Date();
+    document.getElementById('f-date-to').valueAsDate   = new Date();
+    document.getElementById('days-bar').style.display  = 'none';
+    document.getElementById('f-from').value = '';
+    document.getElementById('f-to').value   = '';
+    document.getElementById('f-km').value        = '';
+    document.getElementById('f-fuel').value      = '';
+    document.getElementById('f-fuel-cost').value = '';
+    document.getElementById('fuel-eff-bar').style.display = 'none';
+    document.getElementById('f-memo').value = '';
+    document.getElementById('photo-preview').innerHTML = '';
+    document.getElementById('f-photo').value = '';
+    document.getElementById('stop-list').innerHTML = '';
+    document.getElementById('f-date').valueAsDate = new Date();
+    rating = 0;
+    photoData = [];
+    document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
+
+    showToast('✅ 記録を保存しました！');
+    setTimeout(() => switchTab('list'), 800);
+  }
+
+  // 読み込み
+  function getRecords() {
+    try { return JSON.parse(localStorage.getItem('touring_records')) || []; }
+    catch { return []; }
+  }
+
+  // 一覧表示
+  function renderList() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const list = getRecords().filter(r =>
+      (r.title || '').toLowerCase().includes(q) ||
+      r.to.toLowerCase().includes(q) ||
+      (r.from || '').toLowerCase().includes(q) ||
+      (r.memo || '').toLowerCase().includes(q) ||
+      (r.stops || []).some(s => (s.name||s).toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q))
+    );
+
+    const all       = getRecords();
+    const totalKm   = all.reduce((s, r) => s + (r.km || 0), 0);
+    const totalCost = all.reduce((s, r) => s + (r.fuelCost || 0), 0);
+    const totalDays = all.reduce((s, r) => {
+      if (!r.dateFrom) return s + 1;
+      const to = r.dateTo && r.dateTo >= r.dateFrom ? r.dateTo : r.dateFrom;
+      return s + Math.round((new Date(to) - new Date(r.dateFrom)) / 86400000) + 1;
+    }, 0);
+    document.getElementById('stat-count').textContent = all.length;
+    document.getElementById('stat-km').textContent    = totalKm.toLocaleString();
+    document.getElementById('stat-days').textContent  = totalDays;
+    document.getElementById('stat-cost').textContent  = totalCost.toLocaleString();
+
+    const el = document.getElementById('record-list');
+    if (list.length === 0) {
+      el.innerHTML = `<div class="empty-state"><div class="icon">🏍️</div>記録がまだありません。<br>最初のツーリングを記録しよう！</div>`;
+      return;
+    }
+
+    el.innerHTML = list.map(r => `
+      <div class="record-card">
+        <div class="record-header">
+          <div class="record-title">${r.title ? escape(r.title) : `📍 ${escape(r.to)}`}</div>
+          <div class="record-date">${formatDateRange(r)}</div>
+        </div>
+        <div class="route-flow">
+          ${r.from ? `<span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(r.from).replace(/'/g,"\\'")}')">🗺️ ${escape(r.from)}</span><span class="arrow">▶</span>` : ''}
+          ${(r.stops || []).map(s => `<span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(s.name||s).replace(/'/g,"\\'")}')">🚩 ${escape(s.name||s)}</span><span class="arrow">▶</span>`).join('')}
+          <span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(r.to).replace(/'/g,"\\'")}')">📍 ${escape(r.to)}</span>
+        </div>
+        ${(r.stops || []).filter(s => s.memo).length ? `
+          <div style="margin-bottom:10px;">
+            ${(r.stops).filter(s => s.memo).map(s => `
+              <div style="border-left:3px solid #e94560;padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
+                <div style="font-size:0.8rem;color:#e94560;margin-bottom:3px;">🚩 ${escape(s.name)}${s.rating ? `　<span style="color:#f5a623;">${'★'.repeat(s.rating)}${'☆'.repeat(5-s.rating)}</span>` : ''}</div>
+                <div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>
+              </div>`).join('')}
+          </div>` : ''}
+        <div class="record-meta">
+          ${r.km       ? `<span>🛣️ ${r.km.toLocaleString()} km</span>` : ''}
+          ${r.fuel     ? `<span>⛽ ${r.fuel} L</span>` : ''}
+          ${r.fuelCost ? `<span>💴 ${r.fuelCost.toLocaleString()} 円</span>` : ''}
+          ${r.km && r.fuel ? `<span>⚡ ${(r.km / r.fuel).toFixed(1)} km/L</span>` : ''}
+          <span>${r.weather}</span>
+        </div>
+        ${r.rating ? `<div class="record-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>` : ''}
+        ${r.memo   ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
+        ${r.photos && r.photos.length ? `
+          <div class="record-photos">
+            ${r.photos.map(p => `<img src="${p}" onclick="openModal('${p}')" />`).join('')}
+          </div>` : ''}
+        <button class="btn-gmap-small" onclick="openGMapRecord(${r.id})">🗺️ Google Mapsで見る</button>
+        <button class="btn-delete" onclick="deleteRecord(${r.id})">🗑️ 削除</button>
+      </div>
+    `).join('');
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    return `${y}年${m}月${day}日`;
+  }
+  function formatDateRange(r) {
+    const from = r.dateFrom || r.date;
+    const to   = r.dateTo;
+    if (!from) return '';
+    if (!to || to === from) return formatDate(from);
+    const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+    return `${formatDate(from)} 〜 ${formatDate(to)}（${days}日間）`;
+  }
+  function escape(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // 削除
+  function deleteRecord(id) {
+    if (!confirm('この記録を削除しますか？')) return;
+    const list = getRecords().filter(r => r.id !== id);
+    localStorage.setItem('touring_records', JSON.stringify(list));
+    renderList();
+    showToast('🗑️ 削除しました');
+  }
+
+  // タブ切替
+  function switchTab(name) {
+    document.getElementById('tab-add').style.display  = name === 'add'  ? 'block' : 'none';
+    document.getElementById('tab-list').style.display = name === 'list' ? 'block' : 'none';
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+      b.classList.toggle('active', (i === 0 && name === 'add') || (i === 1 && name === 'list'));
+    });
+    if (name === 'list') renderList();
+  }
+
+  // モーダル
+  function openModal(src) {
+    document.getElementById('modal-img').src = src;
+    document.getElementById('modal').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+  }
+
+  // トースト
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // 初期化
+  switchTab('add');
+</script>
+</body>
+</html>
