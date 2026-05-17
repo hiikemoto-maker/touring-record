@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -503,7 +505,7 @@
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
   </style>
-  <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js" integrity="sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -1142,7 +1144,7 @@
         ${r.memo   ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
         ${r.photos && r.photos.length ? `
           <div class="record-photos">
-            ${r.photos.map(p => `<img src="${p}" onclick="openModal('${p}')" />`).join('')}
+            ${r.photos.map(p => `<img src="${p}" onclick="openModal('${jsArg(p)}')" />`).join('')}
           </div>` : ''}
         <div class="record-actions">
           <button class="btn-gmap-small" onclick="openGMapRecord(${r.id})">🗺️ Google Mapsで見る</button>
