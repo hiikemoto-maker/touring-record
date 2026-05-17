@@ -103,6 +103,25 @@
     }
     .stop-card input  { margin-bottom: 8px; }
     .stop-card textarea { min-height: 60px; resize: vertical; }
+    .stop-type-row {
+      margin-right: 38px;
+      margin-bottom: 8px;
+    }
+    .stop-type-row select {
+      width: auto;
+      min-width: 150px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+    }
+    .stop-card.is-ferry {
+      border-color: #2f8f8a;
+    }
+    .stop-card.is-ferry .ferry-to-row {
+      display: flex;
+    }
+    .ferry-to-row {
+      display: none;
+    }
     .stop-stars { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
     .stop-star {
       font-size: 1.3rem;
@@ -140,6 +159,11 @@
       transition: all 0.2s;
     }
     .btn-add-stop:hover { border-color: #e94560; color: #e94560; }
+    .route-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
 
     /* 燃費バー */
     .fuel-eff-bar {
@@ -234,7 +258,9 @@
       margin-bottom: 8px;
     }
     .route-flow .place { color: #ccc; }
+    .route-flow .ferry-place { color: #83d4cf; }
     .route-flow .arrow { color: #e94560; font-size: 0.75rem; }
+    .route-flow .ferry-arrow { color: #83d4cf; }
 
     /* 星評価 */
     .stars { display: flex; gap: 6px; margin-top: 4px; }
@@ -286,6 +312,24 @@
       transition: opacity 0.2s;
     }
     .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      width: 100%;
+      padding: 12px;
+      background: none;
+      color: #aaa;
+      border: 1px solid #555;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: #e94560; color: #e94560; }
+    .record-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
 
     /* ---- 記録一覧 ---- */
     #tab-list { display: none; }
@@ -505,9 +549,12 @@
       </div>
 
       <div class="form-group">
-        <label>🚩 立ち寄り地（何箇所でも追加できます）</label>
+        <label>🚩 経由地・フェリー区間</label>
         <div class="stop-list" id="stop-list"></div>
-        <button type="button" class="btn-add-stop" onclick="addStop()">＋ 立ち寄り地を追加</button>
+        <div class="route-actions">
+          <button type="button" class="btn-add-stop" onclick="addStop()">＋ 立ち寄り地</button>
+          <button type="button" class="btn-add-stop" onclick="addStop('', '', 0, 'ferry')">＋ フェリー区間</button>
+        </div>
       </div>
 
       <button type="button" class="btn-gmap" onclick="openGMapRoute()">🗺️ Google Mapsでルートを確認</button>
@@ -571,7 +618,8 @@
         <div id="photo-preview"></div>
       </div>
 
-      <button class="btn-primary" onclick="saveRecord()">💾 記録を保存する</button>
+      <button class="btn-primary" id="save-btn" onclick="saveRecord()">💾 記録を保存する</button>
+      <button class="btn-secondary" id="cancel-edit-btn" onclick="cancelEdit()" style="display:none;">編集をキャンセル</button>
     </div>
   </div>
 
@@ -612,30 +660,55 @@
 <script>
   let rating = 0;
   let photoData = [];
+  let editingId = null;
+  let memoryRecords = [];
 
-  // 立ち寄り地
-  function addStop(name = '', memo = '', rating = 0) {
+  // 経由地・フェリー区間
+  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '') {
     const list = document.getElementById('stop-list');
-    const idx  = Date.now();
+    const idx  = `s${Date.now()}${Math.floor(Math.random() * 100000)}`;
+    const isFerry = type === 'ferry';
     const card = document.createElement('div');
-    card.className = 'stop-card';
+    card.className = `stop-card${isFerry ? ' is-ferry' : ''}`;
     card.dataset.id = idx;
     card.innerHTML = `
-      <button type="button" class="btn-remove-stop" onclick="removeStop(${idx})">×</button>
+      <button type="button" class="btn-remove-stop" onclick="removeStop('${idx}')">×</button>
+      <div class="stop-type-row">
+        <select class="stop-type" onchange="updateStopType(this)">
+          <option value="stop" ${!isFerry ? 'selected' : ''}>🚩 立ち寄り地</option>
+          <option value="ferry" ${isFerry ? 'selected' : ''}>⛴️ フェリー区間</option>
+        </select>
+      </div>
       <div class="place-row">
-        <input type="text" class="stop-name" placeholder="📍 場所の名前（例：道の駅 足柄）" value="${name}" />
+        <input type="text" class="stop-name" placeholder="${isFerry ? '⛴️ 乗船港（例：大洗港）' : '📍 場所の名前（例：道の駅 足柄）'}" value="${escapeAttr(name)}" />
+        <button type="button" class="btn-map-pin" onclick="openGMapSingle(this.previousElementSibling.value)" title="Google Mapsで開く">🗺️</button>
+      </div>
+      <div class="place-row ferry-to-row">
+        <input type="text" class="ferry-to-name" placeholder="⚓ 下船港（例：苫小牧港）" value="${escapeAttr(toName)}" />
         <button type="button" class="btn-map-pin" onclick="openGMapSingle(this.previousElementSibling.value)" title="Google Mapsで開く">🗺️</button>
       </div>
       <div class="stop-stars">
         <span style="font-size:0.8rem;color:#aaa;">満足度：</span>
-        ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}" onclick="setStopRating(this, ${idx})">★</span>`).join('')}
+        ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}" onclick="setStopRating(this)">★</span>`).join('')}
       </div>
-      <textarea class="stop-memo" placeholder="感想・メモ（例：ソフトクリームが絶品！景色も最高だった）">${memo}</textarea>
+      <textarea class="stop-memo" placeholder="${isFerry ? '航路名・船内メモ（例：夕方便、船内で休憩できた）' : '感想・メモ（例：ソフトクリームが絶品！景色も最高だった）'}">${escape(memo)}</textarea>
     `;
     list.appendChild(card);
   }
 
-  function setStopRating(el, idx) {
+  function updateStopType(select) {
+    const card = select.closest('.stop-card');
+    const isFerry = select.value === 'ferry';
+    card.classList.toggle('is-ferry', isFerry);
+    card.querySelector('.stop-name').placeholder = isFerry
+      ? '⛴️ 乗船港（例：大洗港）'
+      : '📍 場所の名前（例：道の駅 足柄）';
+    card.querySelector('.stop-memo').placeholder = isFerry
+      ? '航路名・船内メモ（例：夕方便、船内で休憩できた）'
+      : '感想・メモ（例：ソフトクリームが絶品！景色も最高だった）';
+  }
+
+  function setStopRating(el) {
     const v = parseInt(el.dataset.v);
     el.closest('.stop-card').querySelectorAll('.stop-star').forEach(s => {
       s.classList.toggle('on', parseInt(s.dataset.v) <= v);
@@ -650,24 +723,59 @@
   function getStops() {
     return Array.from(document.querySelectorAll('#stop-list .stop-card')).map(card => {
       const onStars = card.querySelectorAll('.stop-star.on');
-      return {
+      const type = card.querySelector('.stop-type')?.value || 'stop';
+      const stop = {
+        type,
         name:   card.querySelector('.stop-name').value.trim(),
         memo:   card.querySelector('.stop-memo').value.trim(),
         rating: onStars.length
       };
-    }).filter(s => s.name);
+      if (type === 'ferry') {
+        stop.toName = card.querySelector('.ferry-to-name').value.trim();
+      }
+      return stop;
+    }).filter(s => s.type === 'ferry' ? (s.name || s.toName) : s.name);
+  }
+
+  function normalizeStops(stops) {
+    return (stops || []).map(s => {
+      if (typeof s === 'string') return { type: 'stop', name: s, memo: '', rating: 0 };
+      return {
+        type: s.type === 'ferry' ? 'ferry' : 'stop',
+        name: s.name || '',
+        toName: s.toName || '',
+        memo: s.memo || '',
+        rating: s.rating || 0
+      };
+    });
+  }
+
+  function getRoutePlaces(from, stops, to) {
+    const places = [];
+    if (from) places.push(from);
+    normalizeStops(stops).forEach(s => {
+      if (s.type === 'ferry') {
+        if (s.name) places.push(s.name);
+        if (s.toName) places.push(s.toName);
+      } else if (s.name) {
+        places.push(s.name);
+      }
+    });
+    if (to) places.push(to);
+    return places;
   }
 
   // Google Maps連携
   function buildGMapUrl(from, stops, to) {
-    const stopList = (stops || []).map(s => s.name || s).filter(n => n);
-    if (!from && !stopList.length && !to) return null;
-    if (from && to) {
-      let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}`;
-      if (stopList.length) url += `&waypoints=${stopList.map(encodeURIComponent).join('|')}`;
+    const places = getRoutePlaces(from, stops, to);
+    if (!places.length) return null;
+    if (places.length >= 2) {
+      let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(places[0])}&destination=${encodeURIComponent(places[places.length - 1])}`;
+      const waypoints = places.slice(1, -1);
+      if (waypoints.length) url += `&waypoints=${waypoints.map(encodeURIComponent).join('|')}`;
       return url;
     }
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(to || from || stopList[0])}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(places[0])}`;
   }
 
   function openGMapSingle(place) {
@@ -716,10 +824,8 @@
   async function calcDistance() {
     const from = document.getElementById('f-from').value.trim();
     const to   = document.getElementById('f-to').value.trim();
-    if (!from || !to) { showToast('出発地と目的地を入力してください'); return; }
-
-    const stopNames = getStops().map(s => s.name).filter(n => n);
-    const places    = [from, ...stopNames, to];
+    const places = getRoutePlaces(from, getStops(), to);
+    if (places.length < 2) { showToast('2箇所以上の場所を入力してください'); return; }
 
     const btn = document.getElementById('btn-calc');
     btn.textContent = '計算中…';
@@ -778,10 +884,7 @@
   // 星評価
   document.querySelectorAll('.star').forEach(s => {
     s.addEventListener('click', () => {
-      rating = parseInt(s.dataset.v);
-      document.querySelectorAll('.star').forEach(x => {
-        x.classList.toggle('on', parseInt(x.dataset.v) <= rating);
-      });
+      setMainRating(parseInt(s.dataset.v));
     });
   });
 
@@ -819,6 +922,16 @@
     });
   }
 
+  function renderPhotoPreview() {
+    const preview = document.getElementById('photo-preview');
+    preview.innerHTML = '';
+    photoData.forEach(dataUrl => {
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      preview.appendChild(img);
+    });
+  }
+
   // 保存
   function saveRecord() {
     const title    = document.getElementById('f-title').value.trim();
@@ -836,11 +949,16 @@
       showToast('出発日と目的地は必須です！');
       return;
     }
+    const stops = getStops();
+    if (stops.some(s => s.type === 'ferry' && (!s.name || !s.toName))) {
+      showToast('フェリー区間は乗船港と下船港を入力してください');
+      return;
+    }
 
     const record = {
-      id: Date.now(),
+      id: editingId || Date.now(),
       title, dateFrom, dateTo, from, to,
-      stops: getStops(),
+      stops,
       km:       km       ? parseInt(km)         : null,
       fuel:     fuel     ? parseFloat(fuel)     : null,
       fuelCost: fuelCost ? parseInt(fuelCost)   : null,
@@ -851,10 +969,21 @@
     };
 
     const list = getRecords();
-    list.unshift(record);
-    localStorage.setItem('touring_records', JSON.stringify(list));
+    const wasEditing = Boolean(editingId);
+    if (wasEditing) {
+      saveRecords(list.map(r => r.id === editingId ? record : r));
+    } else {
+      list.unshift(record);
+      saveRecords(list);
+    }
 
-    // リセット
+    resetForm();
+
+    showToast(wasEditing ? '✅ 記録を更新しました！' : '✅ 記録を保存しました！');
+    setTimeout(() => switchTab('list'), 800);
+  }
+
+  function resetForm() {
     document.getElementById('f-title').value     = '';
     document.getElementById('f-date-from').valueAsDate = new Date();
     document.getElementById('f-date-to').valueAsDate   = new Date();
@@ -869,31 +998,89 @@
     document.getElementById('photo-preview').innerHTML = '';
     document.getElementById('f-photo').value = '';
     document.getElementById('stop-list').innerHTML = '';
-    document.getElementById('f-date').valueAsDate = new Date();
     rating = 0;
     photoData = [];
+    editingId = null;
     document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
-
-    showToast('✅ 記録を保存しました！');
-    setTimeout(() => switchTab('list'), 800);
+    document.getElementById('save-btn').textContent = '💾 記録を保存する';
+    document.getElementById('cancel-edit-btn').style.display = 'none';
   }
 
   // 読み込み
   function getRecords() {
-    try { return JSON.parse(localStorage.getItem('touring_records')) || []; }
-    catch { return []; }
+    try {
+      if (!window.localStorage) return [...memoryRecords];
+      return JSON.parse(localStorage.getItem('touring_records')) || [];
+    }
+    catch { return [...memoryRecords]; }
+  }
+
+  function saveRecords(records) {
+    memoryRecords = [...records];
+    try {
+      if (window.localStorage) {
+        localStorage.setItem('touring_records', JSON.stringify(records));
+      }
+    } catch {}
+  }
+
+  function setMainRating(value) {
+    rating = value || 0;
+    document.querySelectorAll('.star').forEach(s => {
+      s.classList.toggle('on', parseInt(s.dataset.v) <= rating);
+    });
+  }
+
+  function editRecord(id) {
+    const r = getRecords().find(x => x.id === id);
+    if (!r) return;
+
+    editingId = id;
+    document.getElementById('f-title').value = r.title || '';
+    document.getElementById('f-date-from').value = r.dateFrom || r.date || '';
+    document.getElementById('f-date-to').value = r.dateTo || r.dateFrom || r.date || '';
+    document.getElementById('f-from').value = r.from || '';
+    document.getElementById('f-to').value = r.to || '';
+    document.getElementById('f-km').value = r.km || '';
+    document.getElementById('f-fuel').value = r.fuel || '';
+    document.getElementById('f-fuel-cost').value = r.fuelCost || '';
+    document.getElementById('f-weather').value = r.weather || '☀️ 晴れ';
+    document.getElementById('f-memo').value = r.memo || '';
+
+    document.getElementById('stop-list').innerHTML = '';
+    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName));
+    photoData = [...(r.photos || [])];
+    renderPhotoPreview();
+    setMainRating(r.rating || 0);
+    updateDays();
+    updateFuelEff();
+    document.getElementById('save-btn').textContent = '💾 変更を保存する';
+    document.getElementById('cancel-edit-btn').style.display = 'block';
+    switchTab('add');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('編集できます');
+  }
+
+  function cancelEdit() {
+    resetForm();
+    showToast('編集をキャンセルしました');
   }
 
   // 一覧表示
   function renderList() {
     const q = document.getElementById('search').value.toLowerCase();
-    const list = getRecords().filter(r =>
-      (r.title || '').toLowerCase().includes(q) ||
-      r.to.toLowerCase().includes(q) ||
-      (r.from || '').toLowerCase().includes(q) ||
-      (r.memo || '').toLowerCase().includes(q) ||
-      (r.stops || []).some(s => (s.name||s).toLowerCase().includes(q) || (s.memo||'').toLowerCase().includes(q))
-    );
+    const list = getRecords().filter(r => {
+      const stops = normalizeStops(r.stops);
+      return (r.title || '').toLowerCase().includes(q) ||
+        (r.to || '').toLowerCase().includes(q) ||
+        (r.from || '').toLowerCase().includes(q) ||
+        (r.memo || '').toLowerCase().includes(q) ||
+        stops.some(s =>
+          (s.name || '').toLowerCase().includes(q) ||
+          (s.toName || '').toLowerCase().includes(q) ||
+          (s.memo || '').toLowerCase().includes(q)
+        );
+    });
 
     const all       = getRecords();
     const totalKm   = all.reduce((s, r) => s + (r.km || 0), 0);
@@ -921,18 +1108,9 @@
           <div class="record-date">${formatDateRange(r)}</div>
         </div>
         <div class="route-flow">
-          ${r.from ? `<span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(r.from).replace(/'/g,"\\'")}')">🗺️ ${escape(r.from)}</span><span class="arrow">▶</span>` : ''}
-          ${(r.stops || []).map(s => `<span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(s.name||s).replace(/'/g,"\\'")}')">🚩 ${escape(s.name||s)}</span><span class="arrow">▶</span>`).join('')}
-          <span class="place" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${escape(r.to).replace(/'/g,"\\'")}')">📍 ${escape(r.to)}</span>
+          ${renderRouteFlow(r)}
         </div>
-        ${(r.stops || []).filter(s => s.memo).length ? `
-          <div style="margin-bottom:10px;">
-            ${(r.stops).filter(s => s.memo).map(s => `
-              <div style="border-left:3px solid #e94560;padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
-                <div style="font-size:0.8rem;color:#e94560;margin-bottom:3px;">🚩 ${escape(s.name)}${s.rating ? `　<span style="color:#f5a623;">${'★'.repeat(s.rating)}${'☆'.repeat(5-s.rating)}</span>` : ''}</div>
-                <div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>
-              </div>`).join('')}
-          </div>` : ''}
+        ${renderStopNotes(r)}
         <div class="record-meta">
           ${r.km       ? `<span>🛣️ ${r.km.toLocaleString()} km</span>` : ''}
           ${r.fuel     ? `<span>⛽ ${r.fuel} L</span>` : ''}
@@ -946,10 +1124,54 @@
           <div class="record-photos">
             ${r.photos.map(p => `<img src="${p}" onclick="openModal('${p}')" />`).join('')}
           </div>` : ''}
-        <button class="btn-gmap-small" onclick="openGMapRecord(${r.id})">🗺️ Google Mapsで見る</button>
-        <button class="btn-delete" onclick="deleteRecord(${r.id})">🗑️ 削除</button>
+        <div class="record-actions">
+          <button class="btn-gmap-small" onclick="openGMapRecord(${r.id})">🗺️ Google Mapsで見る</button>
+          <button class="btn-gmap-small" onclick="editRecord(${r.id})">✏️ 編集</button>
+          <button class="btn-delete" onclick="deleteRecord(${r.id})">🗑️ 削除</button>
+        </div>
       </div>
     `).join('');
+  }
+
+  function routeLink(place, label, className = 'place') {
+    return `<span class="${className}" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${jsArg(place)}')">${escape(label)}</span>`;
+  }
+
+  function renderRouteFlow(r) {
+    const segments = [];
+    if (r.from) segments.push(routeLink(r.from, `🗺️ ${r.from}`));
+    normalizeStops(r.stops).forEach(s => {
+      if (s.type === 'ferry') {
+        const ferry = [];
+        if (s.name) ferry.push(routeLink(s.name, `⛴️ ${s.name}`, 'place ferry-place'));
+        if (s.name && s.toName) ferry.push('<span class="arrow ferry-arrow">⇢</span>');
+        if (s.toName) ferry.push(routeLink(s.toName, `⚓ ${s.toName}`, 'place ferry-place'));
+        if (ferry.length) segments.push(`<span>${ferry.join('')}</span>`);
+      } else if (s.name) {
+        segments.push(routeLink(s.name, `🚩 ${s.name}`));
+      }
+    });
+    if (r.to) segments.push(routeLink(r.to, `📍 ${r.to}`));
+    return segments.join('<span class="arrow">▶</span>');
+  }
+
+  function renderStopNotes(r) {
+    const notes = normalizeStops(r.stops).filter(s => s.memo);
+    if (!notes.length) return '';
+    return `
+      <div style="margin-bottom:10px;">
+        ${notes.map(s => {
+          const title = s.type === 'ferry'
+            ? `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`
+            : `🚩 ${s.name}`;
+          const color = s.type === 'ferry' ? '#83d4cf' : '#e94560';
+          return `
+            <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
+              <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${s.rating ? `　<span style="color:#f5a623;">${'★'.repeat(s.rating)}${'☆'.repeat(5-s.rating)}</span>` : ''}</div>
+              <div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
   }
 
   function formatDate(d) {
@@ -965,15 +1187,21 @@
     const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
     return `${formatDate(from)} 〜 ${formatDate(to)}（${days}日間）`;
   }
+  function jsArg(s) {
+    return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
+  }
+  function escapeAttr(s) {
+    return escape(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   function escape(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   // 削除
   function deleteRecord(id) {
     if (!confirm('この記録を削除しますか？')) return;
     const list = getRecords().filter(r => r.id !== id);
-    localStorage.setItem('touring_records', JSON.stringify(list));
+    saveRecords(list);
     renderList();
     showToast('🗑️ 削除しました');
   }
