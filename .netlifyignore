@@ -6,4 +6,4 @@ AGENTS.md
 DEPLOY.md
 netlify.toml
 vercel.json
-.netlifyignore
+.vercelignore
