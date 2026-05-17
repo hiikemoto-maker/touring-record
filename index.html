@@ -106,12 +106,21 @@
     .stop-type-row {
       margin-right: 38px;
       margin-bottom: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
     }
     .stop-type-row select {
       width: auto;
       min-width: 150px;
       padding: 8px 10px;
       font-size: 0.9rem;
+    }
+    .stop-vehicle {
+      min-width: 120px;
+      padding: 8px 10px;
+      font-size: 0.85rem;
     }
     .stop-card.is-ferry {
       border-color: #2f8f8a;
@@ -664,7 +673,7 @@
   let memoryRecords = [];
 
   // 経由地・フェリー区間
-  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '') {
+  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike') {
     const list = document.getElementById('stop-list');
     const idx  = `s${Date.now()}${Math.floor(Math.random() * 100000)}`;
     const isFerry = type === 'ferry';
@@ -677,6 +686,10 @@
         <select class="stop-type" onchange="updateStopType(this)">
           <option value="stop" ${!isFerry ? 'selected' : ''}>🚩 立ち寄り地</option>
           <option value="ferry" ${isFerry ? 'selected' : ''}>⛴️ フェリー区間</option>
+        </select>
+        <select class="stop-vehicle" style="${isFerry ? 'display:none' : ''}">
+          <option value="bike" ${vehicle !== 'ferry' ? 'selected' : ''}>🏍️ バイク</option>
+          <option value="ferry" ${vehicle === 'ferry' ? 'selected' : ''}>⛴️ フェリー</option>
         </select>
       </div>
       <div class="place-row">
@@ -706,6 +719,8 @@
     card.querySelector('.stop-memo').placeholder = isFerry
       ? '航路名・船内メモ（例：夕方便、船内で休憩できた）'
       : '感想・メモ（例：ソフトクリームが絶品！景色も最高だった）';
+    const vehicleSelect = card.querySelector('.stop-vehicle');
+    if (vehicleSelect) vehicleSelect.style.display = isFerry ? 'none' : '';
   }
 
   function setStopRating(el) {
@@ -724,8 +739,11 @@
     return Array.from(document.querySelectorAll('#stop-list .stop-card')).map(card => {
       const onStars = card.querySelectorAll('.stop-star.on');
       const type = card.querySelector('.stop-type')?.value || 'stop';
+      const vehicleEl = card.querySelector('.stop-vehicle');
+      const vehicle = (vehicleEl && vehicleEl.style.display !== 'none') ? (vehicleEl.value || 'bike') : 'bike';
       const stop = {
         type,
+        vehicle,
         name:   card.querySelector('.stop-name').value.trim(),
         memo:   card.querySelector('.stop-memo').value.trim(),
         rating: onStars.length
@@ -739,9 +757,11 @@
 
   function normalizeStops(stops) {
     return (stops || []).map(s => {
-      if (typeof s === 'string') return { type: 'stop', name: s, memo: '', rating: 0 };
+      if (typeof s === 'string') return { type: 'stop', vehicle: 'bike', name: s, memo: '', rating: 0 };
+      const type = s.type === 'ferry' ? 'ferry' : 'stop';
       return {
-        type: s.type === 'ferry' ? 'ferry' : 'stop',
+        type,
+        vehicle: s.vehicle || (type === 'ferry' ? 'ferry' : 'bike'),
         name: s.name || '',
         toName: s.toName || '',
         memo: s.memo || '',
@@ -1048,7 +1068,7 @@
     document.getElementById('f-memo').value = r.memo || '';
 
     document.getElementById('stop-list').innerHTML = '';
-    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName));
+    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle));
     photoData = [...(r.photos || [])];
     renderPhotoPreview();
     setMainRating(r.rating || 0);
@@ -1148,7 +1168,8 @@
         if (s.toName) ferry.push(routeLink(s.toName, `⚓ ${s.toName}`, 'place ferry-place'));
         if (ferry.length) segments.push(`<span>${ferry.join('')}</span>`);
       } else if (s.name) {
-        segments.push(routeLink(s.name, `🚩 ${s.name}`));
+        const icon = s.vehicle === 'ferry' ? '⛴️' : '🏍️';
+        segments.push(routeLink(s.name, `${icon} ${s.name}`));
       }
     });
     if (r.to) segments.push(routeLink(r.to, `📍 ${r.to}`));
@@ -1161,10 +1182,17 @@
     return `
       <div style="margin-bottom:10px;">
         ${notes.map(s => {
-          const title = s.type === 'ferry'
-            ? `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`
-            : `🚩 ${s.name}`;
-          const color = s.type === 'ferry' ? '#83d4cf' : '#e94560';
+          let title, color;
+          if (s.type === 'ferry') {
+            title = `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`;
+            color = '#83d4cf';
+          } else if (s.vehicle === 'ferry') {
+            title = `⛴️ ${s.name}`;
+            color = '#83d4cf';
+          } else {
+            title = `🏍️ ${s.name}`;
+            color = '#e94560';
+          }
           return `
             <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
               <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${s.rating ? `　<span style="color:#f5a623;">${'★'.repeat(s.rating)}${'☆'.repeat(5-s.rating)}</span>` : ''}</div>
