@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-J8zWhmaRUI4uWrKUNX73jTDvw7Z8eo0nKCbz/ZUeEk8=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -270,6 +270,7 @@
     }
     .route-flow .place { color: #ccc; }
     .route-flow .ferry-place { color: #83d4cf; }
+    .route-flow .map-link { cursor: pointer; text-decoration: underline; }
     .route-flow .arrow { color: #e94560; font-size: 0.75rem; }
     .route-flow .ferry-arrow { color: #83d4cf; }
 
@@ -516,8 +517,8 @@
 
 <div class="container">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('add')">✏️ 記録を追加</button>
-    <button class="tab-btn" onclick="switchTab('list')">📖 記録を見る</button>
+    <button class="tab-btn active" data-tab-target="add">✏️ 記録を追加</button>
+    <button class="tab-btn" data-tab-target="list">📖 記録を見る</button>
   </div>
 
   <!-- ===== 追加フォーム ===== -->
@@ -531,11 +532,11 @@
       <div class="row2">
         <div class="form-group">
           <label>📅 出発日</label>
-          <input type="date" id="f-date-from" oninput="updateDays()" />
+          <input type="date" id="f-date-from" />
         </div>
         <div class="form-group">
           <label>🏁 帰宅日</label>
-          <input type="date" id="f-date-to" oninput="updateDays()" />
+          <input type="date" id="f-date-to" />
         </div>
       </div>
       <div class="fuel-eff-bar" id="days-bar" style="display:none;">
@@ -547,14 +548,14 @@
           <label>🗺️ 出発地</label>
           <div class="place-row">
             <input type="text" id="f-from" placeholder="例：自宅（東京）" />
-            <button type="button" class="btn-map-pin" onclick="openGMapSingle(document.getElementById('f-from').value)" title="Google Mapsで開く">🗺️</button>
+            <button type="button" class="btn-map-pin" data-map-input="f-from" title="Google Mapsで開く">🗺️</button>
           </div>
         </div>
         <div class="form-group">
           <label>📍 目的地</label>
           <div class="place-row">
             <input type="text" id="f-to" placeholder="例：箱根" />
-            <button type="button" class="btn-map-pin" onclick="openGMapSingle(document.getElementById('f-to').value)" title="Google Mapsで開く">🗺️</button>
+            <button type="button" class="btn-map-pin" data-map-input="f-to" title="Google Mapsで開く">🗺️</button>
           </div>
         </div>
       </div>
@@ -563,19 +564,19 @@
         <label>🚩 経由地・フェリー区間</label>
         <div class="stop-list" id="stop-list"></div>
         <div class="route-actions">
-          <button type="button" class="btn-add-stop" onclick="addStop()">＋ 立ち寄り地</button>
-          <button type="button" class="btn-add-stop" onclick="addStop('', '', 0, 'ferry')">＋ フェリー区間</button>
+          <button type="button" class="btn-add-stop" data-add-stop="stop">＋ 立ち寄り地</button>
+          <button type="button" class="btn-add-stop" data-add-stop="ferry">＋ フェリー区間</button>
         </div>
       </div>
 
-      <button type="button" class="btn-gmap" onclick="openGMapRoute()">🗺️ Google Mapsでルートを確認</button>
+      <button type="button" class="btn-gmap" id="btn-gmap-route">🗺️ Google Mapsでルートを確認</button>
 
       <div class="row2">
         <div class="form-group">
           <label>🛣️ 走行距離（km）</label>
           <div class="km-row">
-            <input type="number" id="f-km" placeholder="例：250" min="0" oninput="updateFuelEff()" />
-            <button type="button" class="btn-calc" id="btn-calc" onclick="calcDistance()">🔄 自動計算</button>
+            <input type="number" id="f-km" placeholder="例：250" min="0" />
+            <button type="button" class="btn-calc" id="btn-calc">🔄 自動計算</button>
           </div>
         </div>
         <div class="form-group">
@@ -592,7 +593,7 @@
       <div class="row2">
         <div class="form-group">
           <label>⛽ 給油量（L）</label>
-          <input type="number" id="f-fuel" placeholder="例：12.5" min="0" step="0.1" oninput="updateFuelEff()" />
+          <input type="number" id="f-fuel" placeholder="例：12.5" min="0" step="0.1" />
         </div>
         <div class="form-group">
           <label>💴 ガソリン代（円）</label>
@@ -621,16 +622,16 @@
 
       <div class="form-group">
         <label>📷 写真（複数選択OK）</label>
-        <div class="photo-area" onclick="document.getElementById('f-photo').click()">
+        <div class="photo-area" id="photo-area">
           <div>タップして写真を選ぶ</div>
           <div style="font-size:0.8rem;color:#666;margin-top:4px;">JPG・PNG など</div>
-          <input type="file" id="f-photo" accept="image/*,.heic,.heif" multiple onchange="previewPhotos(event)" />
+          <input type="file" id="f-photo" accept="image/*,.heic,.heif" multiple />
         </div>
         <div id="photo-preview"></div>
       </div>
 
-      <button class="btn-primary" id="save-btn" onclick="saveRecord()">💾 記録を保存する</button>
-      <button class="btn-secondary" id="cancel-edit-btn" onclick="cancelEdit()" style="display:none;">編集をキャンセル</button>
+      <button class="btn-primary" id="save-btn">💾 記録を保存する</button>
+      <button class="btn-secondary" id="cancel-edit-btn" style="display:none;">編集をキャンセル</button>
     </div>
   </div>
 
@@ -654,13 +655,13 @@
         <div class="lbl">総ガソリン代 円</div>
       </div>
     </div>
-    <input class="search-bar" id="search" type="text" placeholder="🔍 目的地・感想で検索…" oninput="renderList()" />
+    <input class="search-bar" id="search" type="text" placeholder="🔍 目的地・感想で検索…" />
     <div id="record-list"></div>
   </div>
 </div>
 
 <!-- 写真モーダル -->
-<div class="modal" id="modal" onclick="closeModal()">
+<div class="modal" id="modal">
   <span class="modal-close">✕</span>
   <img id="modal-img" src="" alt="" />
 </div>
@@ -673,6 +674,9 @@
   let photoData = [];
   let editingId = null;
   let memoryRecords = [];
+  const MAX_PHOTOS = 20;
+  const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+  const MAX_TOTAL_PHOTO_BYTES = 40 * 1024 * 1024;
 
   // 経由地・フェリー区間
   function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike') {
@@ -683,9 +687,9 @@
     card.className = `stop-card${isFerry ? ' is-ferry' : ''}`;
     card.dataset.id = idx;
     card.innerHTML = `
-      <button type="button" class="btn-remove-stop" onclick="removeStop('${idx}')">×</button>
+      <button type="button" class="btn-remove-stop" data-remove-stop="${escapeAttr(idx)}">×</button>
       <div class="stop-type-row">
-        <select class="stop-type" onchange="updateStopType(this)">
+        <select class="stop-type">
           <option value="stop" ${!isFerry ? 'selected' : ''}>🚩 立ち寄り地</option>
           <option value="ferry" ${isFerry ? 'selected' : ''}>⛴️ フェリー区間</option>
         </select>
@@ -696,15 +700,15 @@
       </div>
       <div class="place-row">
         <input type="text" class="stop-name" placeholder="${isFerry ? '⛴️ 乗船港（例：大洗港）' : '📍 場所の名前（例：道の駅 足柄）'}" value="${escapeAttr(name)}" />
-        <button type="button" class="btn-map-pin" onclick="openGMapSingle(this.previousElementSibling.value)" title="Google Mapsで開く">🗺️</button>
+        <button type="button" class="btn-map-pin" data-map-prev title="Google Mapsで開く">🗺️</button>
       </div>
       <div class="place-row ferry-to-row">
         <input type="text" class="ferry-to-name" placeholder="⚓ 下船港（例：苫小牧港）" value="${escapeAttr(toName)}" />
-        <button type="button" class="btn-map-pin" onclick="openGMapSingle(this.previousElementSibling.value)" title="Google Mapsで開く">🗺️</button>
+        <button type="button" class="btn-map-pin" data-map-prev title="Google Mapsで開く">🗺️</button>
       </div>
       <div class="stop-stars">
         <span style="font-size:0.8rem;color:#aaa;">満足度：</span>
-        ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}" onclick="setStopRating(this)">★</span>`).join('')}
+        ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}">★</span>`).join('')}
       </div>
       <textarea class="stop-memo" placeholder="${isFerry ? '航路名・船内メモ（例：夕方便、船内で休憩できた）' : '感想・メモ（例：ソフトクリームが絶品！景色も最高だった）'}">${escape(memo)}</textarea>
     `;
@@ -826,7 +830,7 @@
   }
 
   function openGMapRecord(id) {
-    const r = getRecords().find(x => x.id === id);
+    const r = getRecords().find(x => sameId(x.id, id));
     if (!r) return;
     const url = buildGMapUrl(r.from, r.stops, r.to);
     if (url) openInNewTab(url);
@@ -900,26 +904,27 @@
   }
 
   // 今日の日付をデフォルトに
-  document.getElementById('f-date-from').valueAsDate = new Date();
-  document.getElementById('f-date-to').valueAsDate   = new Date();
-
-  // 星評価
-  document.querySelectorAll('.star').forEach(s => {
-    s.addEventListener('click', () => {
-      setMainRating(parseInt(s.dataset.v));
-    });
-  });
+  function setDefaultDates() {
+    document.getElementById('f-date-from').valueAsDate = new Date();
+    document.getElementById('f-date-to').valueAsDate   = new Date();
+  }
 
   // 写真プレビュー（HEIC/HEIF自動変換対応）
   async function previewPhotos(e) {
     photoData = [];
     const preview = document.getElementById('photo-preview');
     preview.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">読み込み中…</span>';
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files).slice(0, MAX_PHOTOS);
+    let totalBytes = 0;
 
     const results = await Promise.all(files.map(async file => {
       const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
         || /\.(heic|heif)$/i.test(file.name);
+      const isRasterImage = /^image\/(jpeg|png|gif|webp)$/i.test(file.type);
+      totalBytes += file.size || 0;
+      if ((!isHeic && !isRasterImage) || file.size > MAX_PHOTO_BYTES || totalBytes > MAX_TOTAL_PHOTO_BYTES) {
+        return null;
+      }
       if (isHeic) {
         const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
         return await readAsDataURL(Array.isArray(blob) ? blob[0] : blob);
@@ -928,12 +933,15 @@
     }));
 
     preview.innerHTML = '';
-    results.forEach(dataUrl => {
+    results.filter(isSafeImageSrc).forEach(dataUrl => {
       photoData.push(dataUrl);
       const img = document.createElement('img');
       img.src = dataUrl;
       preview.appendChild(img);
     });
+    if (photoData.length < Array.from(e.target.files).length) {
+      showToast('一部の写真は形式またはサイズのため除外しました');
+    }
   }
 
   function readAsDataURL(blob) {
@@ -947,6 +955,7 @@
   function renderPhotoPreview() {
     const preview = document.getElementById('photo-preview');
     preview.innerHTML = '';
+    photoData = photoData.filter(isSafeImageSrc).slice(0, MAX_PHOTOS);
     photoData.forEach(dataUrl => {
       const img = document.createElement('img');
       img.src = dataUrl;
@@ -993,7 +1002,7 @@
     const list = getRecords();
     const wasEditing = Boolean(editingId);
     if (wasEditing) {
-      saveRecords(list.map(r => r.id === editingId ? record : r));
+      saveRecords(list.map(r => sameId(r.id, editingId) ? record : r));
     } else {
       list.unshift(record);
       saveRecords(list);
@@ -1032,7 +1041,8 @@
   function getRecords() {
     try {
       if (!window.localStorage) return [...memoryRecords];
-      return JSON.parse(localStorage.getItem('touring_records')) || [];
+      const records = JSON.parse(localStorage.getItem('touring_records')) || [];
+      return Array.isArray(records) ? records : [];
     }
     catch { return [...memoryRecords]; }
   }
@@ -1054,7 +1064,7 @@
   }
 
   function editRecord(id) {
-    const r = getRecords().find(x => x.id === id);
+    const r = getRecords().find(x => sameId(x.id, id));
     if (!r) return;
 
     editingId = id;
@@ -1071,7 +1081,7 @@
 
     document.getElementById('stop-list').innerHTML = '';
     normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle));
-    photoData = [...(r.photos || [])];
+    photoData = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
     renderPhotoPreview();
     setMainRating(r.rating || 0);
     updateDays();
@@ -1105,8 +1115,8 @@
     });
 
     const all       = getRecords();
-    const totalKm   = all.reduce((s, r) => s + (r.km || 0), 0);
-    const totalCost = all.reduce((s, r) => s + (r.fuelCost || 0), 0);
+    const totalKm   = all.reduce((s, r) => s + safeNumber(r.km), 0);
+    const totalCost = all.reduce((s, r) => s + safeNumber(r.fuelCost), 0);
     const totalDays = all.reduce((s, r) => {
       if (!r.dateFrom) return s + 1;
       const to = r.dateTo && r.dateTo >= r.dateFrom ? r.dateTo : r.dateFrom;
@@ -1123,40 +1133,47 @@
       return;
     }
 
-    el.innerHTML = list.map(r => `
+    el.innerHTML = list.map(r => {
+      const km = safeNumber(r.km);
+      const fuel = safeNumber(r.fuel);
+      const fuelCost = safeNumber(r.fuelCost);
+      const safeRating = clampInt(r.rating, 0, 5);
+      const recordId = String(r.id || '');
+      const photos = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
+      return `
       <div class="record-card">
         <div class="record-header">
           <div class="record-title">${r.title ? escape(r.title) : `📍 ${escape(r.to)}`}</div>
-          <div class="record-date">${formatDateRange(r)}</div>
+          <div class="record-date">${escape(formatDateRange(r))}</div>
         </div>
         <div class="route-flow">
           ${renderRouteFlow(r)}
         </div>
         ${renderStopNotes(r)}
         <div class="record-meta">
-          ${r.km       ? `<span>🛣️ ${r.km.toLocaleString()} km</span>` : ''}
-          ${r.fuel     ? `<span>⛽ ${r.fuel} L</span>` : ''}
-          ${r.fuelCost ? `<span>💴 ${r.fuelCost.toLocaleString()} 円</span>` : ''}
-          ${r.km && r.fuel ? `<span>⚡ ${(r.km / r.fuel).toFixed(1)} km/L</span>` : ''}
-          <span>${r.weather}</span>
+          ${km       ? `<span>🛣️ ${km.toLocaleString()} km</span>` : ''}
+          ${fuel     ? `<span>⛽ ${fuel} L</span>` : ''}
+          ${fuelCost ? `<span>💴 ${fuelCost.toLocaleString()} 円</span>` : ''}
+          ${km && fuel ? `<span>⚡ ${(km / fuel).toFixed(1)} km/L</span>` : ''}
+          <span>${escape(r.weather || '')}</span>
         </div>
-        ${r.rating ? `<div class="record-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>` : ''}
+        ${safeRating ? `<div class="record-stars">${'★'.repeat(safeRating)}${'☆'.repeat(5 - safeRating)}</div>` : ''}
         ${r.memo   ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
-        ${r.photos && r.photos.length ? `
+        ${photos.length ? `
           <div class="record-photos">
-            ${r.photos.map(p => `<img src="${p}" onclick="openModal('${jsArg(p)}')" />`).join('')}
+            ${photos.map(p => `<img src="${escapeAttr(p)}" data-modal-src="${escapeAttr(p)}" alt="" />`).join('')}
           </div>` : ''}
         <div class="record-actions">
-          <button class="btn-gmap-small" onclick="openGMapRecord(${r.id})">🗺️ Google Mapsで見る</button>
-          <button class="btn-gmap-small" onclick="editRecord(${r.id})">✏️ 編集</button>
-          <button class="btn-delete" onclick="deleteRecord(${r.id})">🗑️ 削除</button>
+          <button class="btn-gmap-small" data-record-action="map" data-record-id="${escapeAttr(recordId)}">🗺️ Google Mapsで見る</button>
+          <button class="btn-gmap-small" data-record-action="edit" data-record-id="${escapeAttr(recordId)}">✏️ 編集</button>
+          <button class="btn-delete" data-record-action="delete" data-record-id="${escapeAttr(recordId)}">🗑️ 削除</button>
         </div>
       </div>
-    `).join('');
+    `}).join('');
   }
 
   function routeLink(place, label, className = 'place') {
-    return `<span class="${className}" style="cursor:pointer;text-decoration:underline;" onclick="openGMapSingle('${jsArg(place)}')">${escape(label)}</span>`;
+    return `<span class="${className} map-link" data-map-place="${escapeAttr(place)}">${escape(label)}</span>`;
   }
 
   function renderRouteFlow(r) {
@@ -1185,6 +1202,7 @@
       <div style="margin-bottom:10px;">
         ${notes.map(s => {
           let title, color;
+          const safeRating = clampInt(s.rating, 0, 5);
           if (s.type === 'ferry') {
             title = `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`;
             color = '#83d4cf';
@@ -1197,7 +1215,7 @@
           }
           return `
             <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
-              <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${s.rating ? `　<span style="color:#f5a623;">${'★'.repeat(s.rating)}${'☆'.repeat(5-s.rating)}</span>` : ''}</div>
+              <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${safeRating ? `　<span style="color:#f5a623;">${'★'.repeat(safeRating)}${'☆'.repeat(5-safeRating)}</span>` : ''}</div>
               <div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>
             </div>`;
         }).join('')}
@@ -1207,6 +1225,7 @@
   function formatDate(d) {
     if (!d) return '';
     const [y, m, day] = d.split('-');
+    if (!/^\d{4}$/.test(y) || !/^\d{2}$/.test(m) || !/^\d{2}$/.test(day)) return '';
     return `${y}年${m}月${day}日`;
   }
   function formatDateRange(r) {
@@ -1217,20 +1236,104 @@
     const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
     return `${formatDate(from)} 〜 ${formatDate(to)}（${days}日間）`;
   }
-  function jsArg(s) {
-    return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' ');
-  }
   function escapeAttr(s) {
     return escape(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function escape(s) {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
+  function sameId(a, b) {
+    return String(a) === String(b);
+  }
+  function safeNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : 0;
+  }
+  function clampInt(value, min, max) {
+    const num = Number.parseInt(value, 10);
+    if (!Number.isFinite(num)) return min;
+    return Math.min(max, Math.max(min, num));
+  }
+  function isSafeImageSrc(src) {
+    return /^data:image\/(?:jpeg|jpg|png|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(String(src || ''));
+  }
+
+  function bindEvents() {
+    document.querySelectorAll('[data-tab-target]').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tabTarget));
+    });
+    document.getElementById('f-date-from').addEventListener('input', updateDays);
+    document.getElementById('f-date-to').addEventListener('input', updateDays);
+    document.getElementById('f-km').addEventListener('input', updateFuelEff);
+    document.getElementById('f-fuel').addEventListener('input', updateFuelEff);
+    document.getElementById('btn-calc').addEventListener('click', calcDistance);
+    document.getElementById('btn-gmap-route').addEventListener('click', openGMapRoute);
+    document.getElementById('save-btn').addEventListener('click', saveRecord);
+    document.getElementById('cancel-edit-btn').addEventListener('click', cancelEdit);
+    document.getElementById('search').addEventListener('input', renderList);
+    document.getElementById('f-photo').addEventListener('change', previewPhotos);
+    document.getElementById('photo-area').addEventListener('click', () => {
+      document.getElementById('f-photo').click();
+    });
+    document.querySelectorAll('[data-map-input]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.dataset.mapInput);
+        openGMapSingle(input ? input.value : '');
+      });
+    });
+    document.querySelectorAll('[data-add-stop]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.dataset.addStop === 'ferry' ? addStop('', '', 0, 'ferry') : addStop();
+      });
+    });
+    document.querySelectorAll('.star').forEach(s => {
+      s.addEventListener('click', () => setMainRating(parseInt(s.dataset.v, 10)));
+    });
+
+    document.getElementById('stop-list').addEventListener('click', e => {
+      const removeBtn = e.target.closest('[data-remove-stop]');
+      if (removeBtn) {
+        removeStop(removeBtn.dataset.removeStop);
+        return;
+      }
+      const mapBtn = e.target.closest('[data-map-prev]');
+      if (mapBtn) {
+        const input = mapBtn.previousElementSibling;
+        openGMapSingle(input ? input.value : '');
+        return;
+      }
+      const star = e.target.closest('.stop-star');
+      if (star) setStopRating(star);
+    });
+    document.getElementById('stop-list').addEventListener('change', e => {
+      if (e.target.classList.contains('stop-type')) updateStopType(e.target);
+    });
+
+    document.getElementById('record-list').addEventListener('click', e => {
+      const image = e.target.closest('[data-modal-src]');
+      if (image) {
+        openModal(image.dataset.modalSrc);
+        return;
+      }
+      const mapPlace = e.target.closest('[data-map-place]');
+      if (mapPlace) {
+        openGMapSingle(mapPlace.dataset.mapPlace);
+        return;
+      }
+      const actionBtn = e.target.closest('[data-record-action]');
+      if (!actionBtn) return;
+      const id = actionBtn.dataset.recordId;
+      if (actionBtn.dataset.recordAction === 'map') openGMapRecord(id);
+      if (actionBtn.dataset.recordAction === 'edit') editRecord(id);
+      if (actionBtn.dataset.recordAction === 'delete') deleteRecord(id);
+    });
+    document.getElementById('modal').addEventListener('click', closeModal);
+  }
 
   // 削除
   function deleteRecord(id) {
     if (!confirm('この記録を削除しますか？')) return;
-    const list = getRecords().filter(r => r.id !== id);
+    const list = getRecords().filter(r => !sameId(r.id, id));
     saveRecords(list);
     renderList();
     showToast('🗑️ 削除しました');
@@ -1248,6 +1351,7 @@
 
   // モーダル
   function openModal(src) {
+    if (!isSafeImageSrc(src)) return;
     document.getElementById('modal-img').src = src;
     document.getElementById('modal').classList.add('open');
   }
@@ -1264,6 +1368,8 @@
   }
 
   // 初期化
+  setDefaultDates();
+  bindEvents();
   switchTab('add');
 </script>
 </body>
