@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-6Oki9Khcdi3G1ZvcgHa3vdMJC1F2fakLpEzuCFDXhBg=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-silE5hFAuQE1FSOjXJ6/P0EZat6PnlR2b+R4cV2tUKI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -270,6 +270,34 @@
       font-size: 0.78rem;
       padding: 5px 8px;
     }
+    .calc-basis {
+      display: none;
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .calc-basis-title {
+      color: #f5a623;
+      font-size: 0.84rem;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .calc-basis-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      color: #ddd;
+      font-size: 0.8rem;
+      padding: 5px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .calc-basis-row:first-of-type { border-top: none; }
+    .calc-basis-kind { color: #83d4cf; white-space: nowrap; }
+    .calc-basis-route { min-width: 0; overflow-wrap: anywhere; }
+    .calc-basis-km { color: #fff; font-weight: bold; white-space: nowrap; }
     .btn-calc {
       background: #0f3460;
       border: 1px solid #2a4a7f;
@@ -764,6 +792,10 @@
         <label>📅 日毎のバイク距離（km）</label>
         <div class="daily-distance-list" id="daily-distance-list"></div>
         <div class="daily-distance-summary" id="daily-distance-summary">日付を選ぶと日毎の入力欄が出ます</div>
+        <div class="calc-basis" id="calc-basis">
+          <div class="calc-basis-title">距離計算の根拠</div>
+          <div id="calc-basis-list"></div>
+        </div>
       </div>
       <div class="form-group">
         <label>🌤️ 天気</label>
@@ -903,6 +935,7 @@
   let photoData = [];
   let editingId = null;
   let memoryRecords = [];
+  let lastCalcBasis = [];
   const MAX_PHOTOS = 20;
   const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
   const MAX_TOTAL_PHOTO_BYTES = 40 * 1024 * 1024;
@@ -1274,6 +1307,39 @@
     renderDailyDistanceRows(buildAutoDailyDistances(dailyMap, unassignedKm, totalKm, dateFrom, dateTo));
   }
 
+  function renderCalcBasis(items = []) {
+    const box = document.getElementById('calc-basis');
+    const list = document.getElementById('calc-basis-list');
+    if (!box || !list) return;
+    const rows = (items || []).filter(item => item && item.km > 0);
+    lastCalcBasis = rows.map(item => ({
+      type: item.type,
+      from: item.from,
+      to: item.to,
+      date: item.date || '',
+      km: Math.round(Number(item.km || 0) * 10) / 10,
+      estimated: Boolean(item.estimated)
+    }));
+    if (!rows.length) {
+      box.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    box.style.display = 'block';
+    list.innerHTML = rows.map(item => {
+      const isFerry = item.type === 'ferry';
+      const kind = isFerry ? '⛴️ フェリー' : '🏍️ バイク';
+      const date = item.date ? `${formatShortDate(item.date)} ` : '';
+      const estimated = item.estimated ? ' 推定' : '';
+      return `
+        <div class="calc-basis-row">
+          <div class="calc-basis-kind">${kind}</div>
+          <div class="calc-basis-route">${escape(date)}${escape(item.from)} → ${escape(item.to)}${estimated}</div>
+          <div class="calc-basis-km">${Math.round(item.km).toLocaleString()} km</div>
+        </div>`;
+    }).join('');
+  }
+
   function setDistancesFromAuto(drivingKm, ferryKm, dailyMap = new Map(), unassignedKm = 0, dateFrom = '', dateTo = '') {
     // 自動計算のたびにバイク/フェリー/旧合計を置き換え、古い行の二重加算を防ぐ。
     Array.from(document.querySelectorAll('#distance-list .distance-row')).forEach(row => {
@@ -1515,23 +1581,27 @@
       let hasEstimatedFerry = false;
       let unassignedDailyKm = 0;
       const dailyMap = new Map();
+      const calcBasis = [];
 
       for (const segment of segments) {
         if (segment.type === 'ferry') {
           const result = await calcFerryKm(segment, coordCache);
           ferryKm += result.km;
           hasEstimatedFerry = hasEstimatedFerry || result.estimated;
+          calcBasis.push({ ...segment, km: result.km, estimated: result.estimated });
         } else {
           const segmentKm = await calcDrivingKm(segment.from, segment.to, coordCache);
           drivingKm += segmentKm;
           if (!addDailyBikeKm(dailyMap, segment.date, segmentKm)) {
             unassignedDailyKm += segmentKm;
           }
+          calcBasis.push({ ...segment, km: segmentKm, estimated: false });
         }
       }
 
       const km = Math.round(drivingKm + ferryKm);
       setDistancesFromAuto(drivingKm, ferryKm, dailyMap, unassignedDailyKm, dateFrom, dateTo);
+      renderCalcBasis(calcBasis);
       const detail = ferryKm > 0
         ? `（🏍️ ${Math.round(drivingKm)} km + ⛴️ ${Math.round(ferryKm)} km${hasEstimatedFerry ? '・推定含む' : ''}）`
         : '';
@@ -1673,6 +1743,7 @@
       rating,
       memo,
       photos: [...photoData],
+      calcBasis: [...lastCalcBasis],
       updatedAt: Date.now()
     };
 
@@ -1702,6 +1773,7 @@
     document.getElementById('distance-list').innerHTML = '';
     addDistanceRow(DISTANCE_KIND_BIKE, '');
     renderDailyDistanceRows([]);
+    renderCalcBasis([]);
     document.getElementById('f-fuel').value      = '';
     document.getElementById('f-fuel-cost').value = '';
     document.getElementById('fuel-eff-bar').style.display = 'none';
@@ -2049,6 +2121,7 @@
       r.dateTo || r.dateFrom || r.date || '',
       distanceSumByKind(distances, DISTANCE_KIND_BIKE)
     ));
+    renderCalcBasis(Array.isArray(r.calcBasis) ? r.calcBasis : []);
     document.getElementById('f-fuel').value = r.fuel || '';
     document.getElementById('f-fuel-cost').value = r.fuelCost || '';
     document.getElementById('f-weather').value = r.weather || '☀️ 晴れ';
