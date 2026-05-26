@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-R2IcnwZ8oC9m00dAbGV+RH+bq8jNb8/qQATvwQT+yHs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-feKzHw3OdXmus3O3YFScidVzBxpYF3C6BxqzHWaGNrc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -975,10 +975,16 @@
 
   // 走行距離の自動計算
   async function geocode(place) {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`,
-      { headers: { 'Accept-Language': 'ja' } }
-    );
+    let res;
+    try {
+      res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'ja' } }
+      );
+    } catch (_) {
+      throw new Error('地名検索サーバー（OSM）に接続できません。ブラウザの拡張機能やネットワーク（プロキシ/VPN）が openstreetmap.org をブロックしていないか確認してください');
+    }
+    if (!res.ok) throw new Error(`地名検索サーバーがエラーを返しました (HTTP ${res.status})`);
     const data = await res.json();
     if (!data.length) throw new Error(`「${place}」の場所が見つかりませんでした`);
     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
@@ -1008,9 +1014,15 @@
         // ORS到達不能（CSP/ネットワーク等）→ OSRMへフォールバック
       }
     }
-    const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
-    );
+    let res;
+    try {
+      res = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
+      );
+    } catch (_) {
+      throw new Error('ルート検索サーバー（OSRM）に接続できません。ブラウザの拡張機能やネットワークが project-osrm.org をブロックしていないか確認してください');
+    }
+    if (!res.ok) throw new Error(`ルート検索サーバーがエラーを返しました (HTTP ${res.status})`);
     const data = await res.json();
     if (data.code !== 'Ok') throw new Error(`「${from}」〜「${to}」の陸路を計算できませんでした`);
     return data.routes[0].distance / 1000;
