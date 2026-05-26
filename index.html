@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-P6im757iiMcVxrNMdDLAF/78byTHigBA0HVIbGXwZOs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+w0T9ZTV3ZFEROxCyAwOSbaANUyTZzl8WPVd8EhxRU0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -1020,6 +1020,22 @@
 
   // 走行距離の自動計算
   async function geocode(place) {
+    const orsKey = getStoredValue(ROUTING_KEY_STORAGE);
+    if (orsKey) {
+      try {
+        const url = `https://api.openrouteservice.org/geocode/search?api_key=${encodeURIComponent(orsKey)}&text=${encodeURIComponent(place)}&boundary.country=JP&size=1`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          const coords = data?.features?.[0]?.geometry?.coordinates;
+          if (Array.isArray(coords) && coords.length >= 2 && Number.isFinite(coords[0]) && Number.isFinite(coords[1])) {
+            return { lon: coords[0], lat: coords[1] };
+          }
+        }
+      } catch (_) {
+        // ORS不通 → Nominatimへフォールバック
+      }
+    }
     let res;
     try {
       res = await fetch(
@@ -1027,7 +1043,7 @@
         { headers: { 'Accept-Language': 'ja' } }
       );
     } catch (_) {
-      throw new Error('地名検索サーバー（OSM）に接続できません。ブラウザの拡張機能やネットワーク（プロキシ/VPN）が openstreetmap.org をブロックしていないか確認してください');
+      throw new Error('地名検索サーバーに接続できません。ORS APIキーを設定するか、ブラウザの拡張機能やネットワーク（プロキシ/VPN）が openstreetmap.org / openrouteservice.org をブロックしていないか確認してください');
     }
     if (!res.ok) throw new Error(`地名検索サーバーがエラーを返しました (HTTP ${res.status})`);
     const data = await res.json();
