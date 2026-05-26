@@ -4,6 +4,7 @@
 AGENTS.md
 .github
 DEPLOY.md
+cloudflare
 netlify.toml
 vercel.json
 .netlifyignore

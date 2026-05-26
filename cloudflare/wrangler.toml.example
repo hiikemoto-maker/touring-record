@@ -1,0 +1,9 @@
+name = "touring-record-sync"
+main = "cloudflare/sync-worker.js"
+compatibility_date = "2026-05-26"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "touring_record_sync"
+database_id = "replace-with-your-d1-database-id"
+

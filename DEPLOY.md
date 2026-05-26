@@ -29,6 +29,25 @@ Build commandは空、Publish directoryは `.` です。
 
 ## 注意
 
-- ツーリング記録はブラウザのlocalStorageに保存されます。
-- 端末やブラウザが変わると記録は共有されません。
+- ツーリング記録はまずブラウザのlocalStorageに保存されます。
+- クラウド同期を使う場合は、Cloudflare Worker + D1 の同期APIを別途公開します。
+- 写真データは容量が大きいため、初期のクラウド同期では本文データのみ同期します。
 - `AGENTS.md` や `.claude` はVercel/Netlifyでは公開対象から除外します。
+
+## Cloudflare D1 同期API
+
+1. CloudflareでD1データベースを作成する
+2. `cloudflare/wrangler.toml.example` を `wrangler.toml` にコピーする
+3. `database_id` をD1のIDに差し替える
+4. テーブルを作成する
+   ```sh
+   wrangler d1 execute touring_record_sync --remote --file=cloudflare/schema.sql
+   ```
+5. Workerを公開する
+   ```sh
+   wrangler deploy
+   ```
+6. 公開されたWorker URLを、アプリの「同期API URL」に入力する
+7. iPhoneとMacで同じ「同期キー」を入力して「今すぐ同期」を押す
+
+同期キーはWorker側でハッシュ化して扱います。平文の同期キーはD1に保存しません。

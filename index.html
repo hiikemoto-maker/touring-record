@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+RROGSvp3DNaUwQnwPQdKWvOm/qzFhw7P0vveMUvMb0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-du57YnloCjrYS10RTm89UzgbHKIJIyYcDsRnqckaZds=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -392,6 +392,54 @@
     }
     .search-bar:focus { border-color: #e94560; }
 
+    .sync-panel {
+      background: #16213e;
+      border: 1px solid #2a4a7f;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .sync-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .sync-title {
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: #83d4cf;
+    }
+    .sync-status {
+      font-size: 0.78rem;
+      color: #aaa;
+      text-align: right;
+    }
+    .sync-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .sync-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .btn-sync {
+      background: #0f3460;
+      border: 1px solid #83d4cf;
+      color: #83d4cf;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-sync:hover:not(:disabled) { background: #83d4cf; color: #0f3460; }
+    .btn-sync:disabled { opacity: 0.5; cursor: default; }
+
     .record-card {
       background: #16213e;
       border-radius: 14px;
@@ -666,6 +714,20 @@
       </div>
     </div>
     <input class="search-bar" id="search" type="text" placeholder="🔍 目的地・感想で検索…" />
+    <div class="sync-panel">
+      <div class="sync-header">
+        <div class="sync-title">☁️ クラウド同期</div>
+        <div class="sync-status" id="sync-status">未設定</div>
+      </div>
+      <div class="sync-grid">
+        <input id="sync-key" type="password" placeholder="同期キー" autocomplete="off" />
+        <input id="sync-api-url" type="url" placeholder="同期API URL" autocomplete="off" />
+      </div>
+      <div class="sync-actions">
+        <button type="button" class="btn-sync" id="btn-save-sync">設定を保存</button>
+        <button type="button" class="btn-sync" id="btn-sync-now">今すぐ同期</button>
+      </div>
+    </div>
     <div id="record-list"></div>
   </div>
 </div>
@@ -687,6 +749,10 @@
   const MAX_PHOTOS = 20;
   const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
   const MAX_TOTAL_PHOTO_BYTES = 40 * 1024 * 1024;
+  const SYNC_KEY_STORAGE = 'touring_sync_key';
+  const SYNC_API_STORAGE = 'touring_sync_api_url';
+  const SYNC_DELETED_STORAGE = 'touring_deleted_records';
+  let syncInProgress = false;
 
   // 経由地・フェリー区間
   function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike', distanceKm = null, date = '') {
@@ -1099,7 +1165,8 @@
       weather,
       rating,
       memo,
-      photos: [...photoData]
+      photos: [...photoData],
+      updatedAt: Date.now()
     };
 
     const list = getRecords();
@@ -1112,6 +1179,7 @@
     }
 
     resetForm();
+    queueAutoSync();
 
     showToast(wasEditing ? '✅ 記録を更新しました！' : '✅ 記録を保存しました！');
     setTimeout(() => switchTab('list'), 800);
@@ -1157,6 +1225,202 @@
         localStorage.setItem('touring_records', JSON.stringify(records));
       }
     } catch {}
+  }
+
+  function getStoredValue(key) {
+    try {
+      return window.localStorage ? localStorage.getItem(key) || '' : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setStoredValue(key, value) {
+    try {
+      if (window.localStorage) localStorage.setItem(key, value);
+    } catch {}
+  }
+
+  function getDeletedRecordMap() {
+    try {
+      if (!window.localStorage) return {};
+      const data = JSON.parse(localStorage.getItem(SYNC_DELETED_STORAGE) || '{}');
+      return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveDeletedRecordMap(map) {
+    try {
+      if (window.localStorage) localStorage.setItem(SYNC_DELETED_STORAGE, JSON.stringify(map || {}));
+    } catch {}
+  }
+
+  function rememberDeletedRecord(id) {
+    if (id === null || id === undefined || id === '') return;
+    const deleted = getDeletedRecordMap();
+    deleted[String(id)] = Date.now();
+    saveDeletedRecordMap(deleted);
+  }
+
+  function normalizeSyncApiUrl(value) {
+    return String(value || '').trim().replace(/\/+$/, '');
+  }
+
+  function getSyncSettings() {
+    const apiInput = document.getElementById('sync-api-url');
+    const keyInput = document.getElementById('sync-key');
+    return {
+      apiUrl: normalizeSyncApiUrl(apiInput?.value || getStoredValue(SYNC_API_STORAGE)),
+      syncKey: String(keyInput?.value || getStoredValue(SYNC_KEY_STORAGE) || '').trim()
+    };
+  }
+
+  function initSyncControls() {
+    const apiInput = document.getElementById('sync-api-url');
+    const keyInput = document.getElementById('sync-key');
+    if (apiInput) apiInput.value = getStoredValue(SYNC_API_STORAGE);
+    if (keyInput) keyInput.value = getStoredValue(SYNC_KEY_STORAGE);
+    updateSyncStatus();
+  }
+
+  function saveSyncSettings() {
+    const { apiUrl, syncKey } = getSyncSettings();
+    if (apiUrl) setStoredValue(SYNC_API_STORAGE, apiUrl);
+    if (syncKey) setStoredValue(SYNC_KEY_STORAGE, syncKey);
+    updateSyncStatus(apiUrl && syncKey ? '設定済み' : '未設定');
+    showToast(apiUrl && syncKey ? '☁️ 同期設定を保存しました' : '同期キーとAPI URLを入力してください');
+  }
+
+  function updateSyncStatus(text = '') {
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    if (text) {
+      el.textContent = text;
+      return;
+    }
+    const { apiUrl, syncKey } = getSyncSettings();
+    el.textContent = apiUrl && syncKey ? '設定済み' : '未設定';
+  }
+
+  function ensureRecordUpdatedAt(record, fallbackTime) {
+    const updatedAt = Number(record.updatedAt);
+    return {
+      ...record,
+      updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : fallbackTime
+    };
+  }
+
+  function prepareLocalRecordsForSync() {
+    const now = Date.now();
+    const records = getRecords().map(r => ensureRecordUpdatedAt(r, now));
+    saveRecords(records);
+    return records;
+  }
+
+  function prepareRecordForCloud(record) {
+    const safe = { ...record };
+    const photos = Array.isArray(record.photos) ? record.photos : [];
+    safe.photos = [];
+    safe.photoCount = photos.length;
+    return safe;
+  }
+
+  function mergeDeletedRecords(localDeleted, remoteDeleted) {
+    const merged = { ...(localDeleted || {}) };
+    (remoteDeleted || []).forEach(item => {
+      const id = String(item.id || item.recordId || '');
+      const deletedAt = Number(item.deletedAt || item.deleted_at || 0);
+      if (!id || !Number.isFinite(deletedAt)) return;
+      merged[id] = Math.max(Number(merged[id] || 0), deletedAt);
+    });
+    return merged;
+  }
+
+  function mergeSyncedRecords(localRecords, remoteRecords, deletedMap) {
+    const byId = new Map();
+    const localById = new Map(localRecords.map(r => [String(r.id), r]));
+
+    [...localRecords, ...(remoteRecords || [])].forEach(record => {
+      if (!record || record.id === null || record.id === undefined) return;
+      const id = String(record.id);
+      const updatedAt = Number(record.updatedAt || 0);
+      const deletedAt = Number(deletedMap[id] || 0);
+      if (deletedAt && deletedAt >= updatedAt) return;
+
+      const current = byId.get(id);
+      if (!current || Number(current.updatedAt || 0) <= updatedAt) {
+        const local = localById.get(id);
+        const localPhotos = Array.isArray(local?.photos) ? local.photos : [];
+        const remotePhotos = Array.isArray(record.photos) ? record.photos : [];
+        byId.set(id, {
+          ...record,
+          photos: remotePhotos.length ? remotePhotos : localPhotos
+        });
+      }
+    });
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const dateCompare = String(b.dateFrom || b.date || '').localeCompare(String(a.dateFrom || a.date || ''));
+      if (dateCompare) return dateCompare;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }
+
+  function queueAutoSync() {
+    const { apiUrl, syncKey } = getSyncSettings();
+    if (!apiUrl || !syncKey || syncInProgress) return;
+    syncNow({ silent: true });
+  }
+
+  async function syncNow(options = {}) {
+    if (syncInProgress) return;
+    const { apiUrl, syncKey } = getSyncSettings();
+    if (!apiUrl || !syncKey) {
+      showToast('同期キーとAPI URLを入力してください');
+      updateSyncStatus('未設定');
+      return;
+    }
+
+    setStoredValue(SYNC_API_STORAGE, apiUrl);
+    setStoredValue(SYNC_KEY_STORAGE, syncKey);
+    syncInProgress = true;
+    updateSyncStatus('同期中…');
+    const btn = document.getElementById('btn-sync-now');
+    if (btn) btn.disabled = true;
+
+    try {
+      const localRecords = prepareLocalRecordsForSync();
+      const deletedMap = getDeletedRecordMap();
+      const deletedRecords = Object.entries(deletedMap).map(([id, deletedAt]) => ({ id, deletedAt }));
+      const res = await fetch(`${apiUrl}/api/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          syncKey,
+          records: localRecords.map(prepareRecordForCloud),
+          deletedRecords
+        })
+      });
+      if (!res.ok) throw new Error(`同期APIエラー ${res.status}`);
+      const data = await res.json();
+      const remoteRecords = Array.isArray(data.records) ? data.records : [];
+      const remoteDeleted = Array.isArray(data.deletedRecords) ? data.deletedRecords : [];
+      const mergedDeleted = mergeDeletedRecords(deletedMap, remoteDeleted);
+      const mergedRecords = mergeSyncedRecords(localRecords, remoteRecords, mergedDeleted);
+      saveDeletedRecordMap(mergedDeleted);
+      saveRecords(mergedRecords);
+      renderList();
+      updateSyncStatus(`同期済み ${mergedRecords.length}件`);
+      if (!options.silent) showToast(`☁️ 同期しました（${mergedRecords.length}件）`);
+    } catch (e) {
+      updateSyncStatus('同期失敗');
+      if (!options.silent) showToast('⚠️ ' + e.message);
+    } finally {
+      syncInProgress = false;
+      if (btn) btn.disabled = false;
+    }
   }
 
   function setMainRating(value) {
@@ -1402,6 +1666,8 @@
     document.getElementById('save-btn').addEventListener('click', saveRecord);
     document.getElementById('cancel-edit-btn').addEventListener('click', cancelEdit);
     document.getElementById('search').addEventListener('input', renderList);
+    document.getElementById('btn-save-sync').addEventListener('click', saveSyncSettings);
+    document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('f-photo').addEventListener('change', previewPhotos);
     document.getElementById('photo-area').addEventListener('click', () => {
       document.getElementById('f-photo').click();
@@ -1464,9 +1730,11 @@
   // 削除
   function deleteRecord(id) {
     if (!confirm('この記録を削除しますか？')) return;
+    rememberDeletedRecord(id);
     const list = getRecords().filter(r => !sameId(r.id, id));
     saveRecords(list);
     renderList();
+    queueAutoSync();
     showToast('🗑️ 削除しました');
   }
 
@@ -1500,6 +1768,7 @@
 
   // 初期化
   setDefaultDates();
+  initSyncControls();
   bindEvents();
   switchTab('add');
 </script>
