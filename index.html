@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-avvfncdP19SMr07Pd3Y0DmB1KcW0SR6m6UTSqe/WfC4=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-ZOL7zDTYq4Xq1KAIC++9ZsA+vgW7iQu1qTDU+hxEfyQ=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -721,6 +721,7 @@
           <option value="電車"></option>
           <option value="車"></option>
           <option value="その他"></option>
+          <option value="合計（旧記録）"></option>
         </datalist>
         <div class="distance-actions">
           <button type="button" class="btn-add-distance" id="btn-add-distance">+ 距離区分を追加</button>
@@ -794,6 +795,10 @@
         <div class="lbl">🏍️ 総バイク km</div>
       </div>
       <div class="stat-box">
+        <div class="num" id="stat-km-bike-day">0</div>
+        <div class="lbl">🏍️ 1日平均 km</div>
+      </div>
+      <div class="stat-box">
         <div class="num" id="stat-km-ferry">0</div>
         <div class="lbl">⛴️ 総フェリー km</div>
       </div>
@@ -823,6 +828,7 @@
       <div class="backup-actions">
         <button type="button" class="btn-sync" id="btn-export-records">記録を書き出し</button>
         <button type="button" class="btn-sync" id="btn-import-records">記録を読み込み</button>
+        <button type="button" class="btn-sync" id="btn-clear-legacy-records">旧記録をクリア</button>
       </div>
       <input id="import-records-file" type="file" accept="application/json,.json" style="display:none;" />
       <div class="sync-header" style="margin-top:0.75rem;">
@@ -965,6 +971,7 @@
   // 距離内訳
   const DISTANCE_KIND_BIKE = 'バイク';
   const DISTANCE_KIND_FERRY = 'フェリー';
+  const DISTANCE_KIND_LEGACY_TOTAL = '合計（旧記録）';
 
   function addDistanceRow(kind = '', km = '') {
     const list = document.getElementById('distance-list');
@@ -1001,12 +1008,33 @@
     return result;
   }
 
-  function normalizeDistances(raw, legacyKm) {
+  function legacyFerryKmFromStops(stops) {
+    return normalizeStops(stops).reduce((sum, s) => {
+      if (s.type !== 'ferry') return sum;
+      return sum + Number(s.distanceKm || 0);
+    }, 0);
+  }
+
+  function hasFerryStop(stops) {
+    return normalizeStops(stops).some(s => s.type === 'ferry' || s.vehicle === 'ferry');
+  }
+
+  function normalizeDistances(raw, legacyKm, stops = []) {
     const fallback = () => {
       const km = parseFloat(legacyKm);
-      return Number.isFinite(km) && km > 0
-        ? [{ kind: DISTANCE_KIND_BIKE, km: Math.round(km * 10) / 10 }]
-        : [];
+      if (!Number.isFinite(km) || km <= 0) return [];
+      const roundedKm = Math.round(km * 10) / 10;
+      const ferryKm = Math.round(legacyFerryKmFromStops(stops) * 10) / 10;
+      if (ferryKm > 0 && ferryKm < roundedKm) {
+        return [
+          { kind: DISTANCE_KIND_BIKE, km: Math.round((roundedKm - ferryKm) * 10) / 10 },
+          { kind: DISTANCE_KIND_FERRY, km: ferryKm }
+        ];
+      }
+      if (hasFerryStop(stops)) {
+        return [{ kind: DISTANCE_KIND_LEGACY_TOTAL, km: roundedKm }];
+      }
+      return [{ kind: DISTANCE_KIND_BIKE, km: roundedKm }];
     };
     if (Array.isArray(raw)) {
       const normalized = raw
@@ -1594,6 +1622,25 @@
     return safe;
   }
 
+  function isLegacyRecord(record) {
+    return record && !Array.isArray(record.distances);
+  }
+
+  function clearLegacyRecords() {
+    const records = getRecords();
+    const legacyRecords = records.filter(isLegacyRecord);
+    if (!legacyRecords.length) {
+      showToast('旧記録はありません');
+      return;
+    }
+    if (!confirm(`旧形式の記録 ${legacyRecords.length}件を削除しますか？`)) return;
+    legacyRecords.forEach(record => rememberDeletedRecord(record.id));
+    saveRecords(records.filter(record => !isLegacyRecord(record)));
+    renderList();
+    queueAutoSync();
+    showToast(`旧記録 ${legacyRecords.length}件をクリアしました`);
+  }
+
   function mergeDeletedRecords(localDeleted, remoteDeleted) {
     const merged = { ...(localDeleted || {}) };
     (remoteDeleted || []).forEach(item => {
@@ -1754,7 +1801,7 @@
     document.getElementById('f-date-to').value = r.dateTo || r.dateFrom || r.date || '';
     document.getElementById('f-from').value = r.from || '';
     document.getElementById('f-to').value = r.to || '';
-    const distances = normalizeDistances(r.distances, r.km);
+    const distances = normalizeDistances(r.distances, r.km, r.stops);
     document.getElementById('distance-list').innerHTML = '';
     if (distances.length === 0) {
       addDistanceRow(DISTANCE_KIND_BIKE, '');
@@ -1804,8 +1851,8 @@
     });
 
     const all       = getRecords();
-    const totalBikeKm  = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km), DISTANCE_KIND_BIKE), 0);
-    const totalFerryKm = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km), DISTANCE_KIND_FERRY), 0);
+    const totalBikeKm  = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km, r.stops), DISTANCE_KIND_BIKE), 0);
+    const totalFerryKm = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km, r.stops), DISTANCE_KIND_FERRY), 0);
     const totalCost = all.reduce((s, r) => s + safeNumber(r.fuelCost), 0);
     const totalDays = all.reduce((s, r) => {
       if (!r.dateFrom) return s + 1;
@@ -1814,6 +1861,7 @@
     }, 0);
     document.getElementById('stat-count').textContent = all.length;
     document.getElementById('stat-km-bike').textContent  = Math.round(totalBikeKm).toLocaleString();
+    document.getElementById('stat-km-bike-day').textContent = totalDays > 0 ? Math.round(totalBikeKm / totalDays).toLocaleString() : '0';
     document.getElementById('stat-km-ferry').textContent = Math.round(totalFerryKm).toLocaleString();
     document.getElementById('stat-days').textContent  = totalDays;
     document.getElementById('stat-cost').textContent  = totalCost.toLocaleString();
@@ -1825,7 +1873,7 @@
     }
 
     el.innerHTML = list.map(r => {
-      const distances = normalizeDistances(r.distances, r.km);
+      const distances = normalizeDistances(r.distances, r.km, r.stops);
       const bikeKm = distanceSumByKind(distances, DISTANCE_KIND_BIKE);
       const ferryKm = distanceSumByKind(distances, DISTANCE_KIND_FERRY);
       const otherDistances = distances.filter(d => d.kind !== DISTANCE_KIND_BIKE && d.kind !== DISTANCE_KIND_FERRY);
@@ -1998,6 +2046,7 @@
     document.getElementById('error-dialog-close').addEventListener('click', hideError);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('btn-export-records').addEventListener('click', exportRecords);
+    document.getElementById('btn-clear-legacy-records').addEventListener('click', clearLegacyRecords);
     document.getElementById('btn-import-records').addEventListener('click', () => {
       document.getElementById('import-records-file').click();
     });
