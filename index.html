@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-J8zWhmaRUI4uWrKUNX73jTDvw7Z8eo0nKCbz/ZUeEk8=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-+RROGSvp3DNaUwQnwPQdKWvOm/qzFhw7P0vveMUvMb0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -130,8 +130,18 @@
     .stop-card.is-ferry .ferry-to-row {
       display: flex;
     }
+    .stop-card.is-ferry .ferry-km-row {
+      display: block;
+    }
     .ferry-to-row {
       display: none;
+    }
+    .ferry-km-row {
+      display: none;
+      margin-bottom: 8px;
+    }
+    .ferry-km-row label {
+      margin-bottom: 4px;
     }
     .stop-stars { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
     .stop-star {
@@ -679,7 +689,7 @@
   const MAX_TOTAL_PHOTO_BYTES = 40 * 1024 * 1024;
 
   // 経由地・フェリー区間
-  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike') {
+  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike', distanceKm = null, date = '') {
     const list = document.getElementById('stop-list');
     const idx  = `s${Date.now()}${Math.floor(Math.random() * 100000)}`;
     const isFerry = type === 'ferry';
@@ -698,6 +708,8 @@
           <option value="ferry" ${vehicle === 'ferry' ? 'selected' : ''}>⛴️ フェリー</option>
         </select>
       </div>
+      <label>📅 立ち寄り日（任意）</label>
+      <input type="date" class="stop-date" value="${escapeAttr(date || '')}" />
       <div class="place-row">
         <input type="text" class="stop-name" placeholder="${isFerry ? '⛴️ 乗船港（例：大洗港）' : '📍 場所の名前（例：道の駅 足柄）'}" value="${escapeAttr(name)}" />
         <button type="button" class="btn-map-pin" data-map-prev title="Google Mapsで開く">🗺️</button>
@@ -705,6 +717,10 @@
       <div class="place-row ferry-to-row">
         <input type="text" class="ferry-to-name" placeholder="⚓ 下船港（例：苫小牧港）" value="${escapeAttr(toName)}" />
         <button type="button" class="btn-map-pin" data-map-prev title="Google Mapsで開く">🗺️</button>
+      </div>
+      <div class="ferry-km-row">
+        <label>⛴️ フェリー距離（km・任意）</label>
+        <input type="number" class="ferry-km" placeholder="未入力なら港間の直線距離で推定" min="0" step="0.1" value="${escapeAttr(distanceKm || '')}" />
       </div>
       <div class="stop-stars">
         <span style="font-size:0.8rem;color:#aaa;">満足度：</span>
@@ -747,6 +763,7 @@
       const type = card.querySelector('.stop-type')?.value || 'stop';
       const vehicleEl = card.querySelector('.stop-vehicle');
       const vehicle = (vehicleEl && vehicleEl.style.display !== 'none') ? (vehicleEl.value || 'bike') : 'bike';
+      const date = normalizeDateValue(card.querySelector('.stop-date')?.value);
       const stop = {
         type,
         vehicle,
@@ -754,8 +771,11 @@
         memo:   card.querySelector('.stop-memo').value.trim(),
         rating: onStars.length
       };
+      if (date) stop.date = date;
       if (type === 'ferry') {
         stop.toName = card.querySelector('.ferry-to-name').value.trim();
+        const distanceKm = normalizeDistanceKm(card.querySelector('.ferry-km')?.value);
+        if (distanceKm) stop.distanceKm = distanceKm;
       }
       return stop;
     }).filter(s => s.type === 'ferry' ? (s.name || s.toName) : s.name);
@@ -770,6 +790,8 @@
         vehicle: s.vehicle || (type === 'ferry' ? 'ferry' : 'bike'),
         name: s.name || '',
         toName: s.toName || '',
+        distanceKm: normalizeDistanceKm(s.distanceKm),
+        date: normalizeDateValue(s.date),
         memo: s.memo || '',
         rating: s.rating || 0
       };
@@ -789,6 +811,33 @@
     });
     if (to) places.push(to);
     return places;
+  }
+
+  function getRouteSegments(from, stops, to) {
+    const segments = [];
+    let current = from || '';
+    normalizeStops(stops).forEach(s => {
+      if (s.type === 'ferry') {
+        if (current && s.name) {
+          segments.push({ type: 'driving', from: current, to: s.name });
+        }
+        if (s.name && s.toName) {
+          segments.push({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm });
+        }
+        current = s.toName || s.name || current;
+      } else if (s.name) {
+        segments.push({
+          type: s.vehicle === 'ferry' ? 'ferry' : 'driving',
+          from: current,
+          to: s.name
+        });
+        current = s.name;
+      }
+    });
+    if (current && to) {
+      segments.push({ type: 'driving', from: current, to });
+    }
+    return segments.filter(s => s.from && s.to && s.from !== s.to);
   }
 
   // Google Maps連携
@@ -847,27 +896,81 @@
     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
   }
 
+  async function getCachedCoord(place, cache) {
+    if (!cache.has(place)) {
+      cache.set(place, await geocode(place));
+    }
+    return cache.get(place);
+  }
+
+  async function calcDrivingKm(from, to, coordCache) {
+    const a = await getCachedCoord(from, coordCache);
+    const b = await getCachedCoord(to, coordCache);
+    const res = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
+    );
+    const data = await res.json();
+    if (data.code !== 'Ok') throw new Error(`「${from}」〜「${to}」の陸路を計算できませんでした`);
+    return data.routes[0].distance / 1000;
+  }
+
+  async function calcFerryKm(segment, coordCache) {
+    if (segment.distanceKm) {
+      return { km: segment.distanceKm, estimated: false };
+    }
+    const a = await getCachedCoord(segment.from, coordCache);
+    const b = await getCachedCoord(segment.to, coordCache);
+    return { km: haversineKm(a, b), estimated: true };
+  }
+
+  function haversineKm(a, b) {
+    const R = 6371;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const x = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+
+  function toRad(deg) {
+    return deg * Math.PI / 180;
+  }
+
   async function calcDistance() {
     const from = document.getElementById('f-from').value.trim();
     const to   = document.getElementById('f-to').value.trim();
-    const places = getRoutePlaces(from, getStops(), to);
-    if (places.length < 2) { showToast('2箇所以上の場所を入力してください'); return; }
+    const segments = getRouteSegments(from, getStops(), to);
+    if (segments.length < 1) { showToast('2箇所以上の場所を入力してください'); return; }
 
     const btn = document.getElementById('btn-calc');
     btn.textContent = '計算中…';
     btn.disabled = true;
 
     try {
-      const coords   = await Promise.all(places.map(p => geocode(p)));
-      const coordStr = coords.map(c => `${c.lon},${c.lat}`).join(';');
-      const res      = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=false`
-      );
-      const data = await res.json();
-      if (data.code !== 'Ok') throw new Error('ルートを計算できませんでした');
-      const km = Math.round(data.routes[0].distance / 1000);
+      const coordCache = new Map();
+      let drivingKm = 0;
+      let ferryKm = 0;
+      let hasEstimatedFerry = false;
+
+      for (const segment of segments) {
+        if (segment.type === 'ferry') {
+          const result = await calcFerryKm(segment, coordCache);
+          ferryKm += result.km;
+          hasEstimatedFerry = hasEstimatedFerry || result.estimated;
+        } else {
+          drivingKm += await calcDrivingKm(segment.from, segment.to, coordCache);
+        }
+      }
+
+      const km = Math.round(drivingKm + ferryKm);
       document.getElementById('f-km').value = km;
-      showToast(`🛣️ 走行距離：約 ${km} km`);
+      updateFuelEff();
+      const detail = ferryKm > 0
+        ? `（陸路 ${Math.round(drivingKm)} km + フェリー ${Math.round(ferryKm)} km${hasEstimatedFerry ? '・推定含む' : ''}）`
+        : '';
+      showToast(`🛣️ 走行距離：約 ${km} km${detail}`);
     } catch (e) {
       showToast('⚠️ ' + e.message);
     } finally {
@@ -1080,7 +1183,7 @@
     document.getElementById('f-memo').value = r.memo || '';
 
     document.getElementById('stop-list').innerHTML = '';
-    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle));
+    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle, s.distanceKm, s.date));
     photoData = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
     renderPhotoPreview();
     setMainRating(r.rating || 0);
@@ -1110,7 +1213,9 @@
         stops.some(s =>
           (s.name || '').toLowerCase().includes(q) ||
           (s.toName || '').toLowerCase().includes(q) ||
-          (s.memo || '').toLowerCase().includes(q)
+          (s.memo || '').toLowerCase().includes(q) ||
+          (s.date || '').toLowerCase().includes(q) ||
+          formatDate(s.date).toLowerCase().includes(q)
         );
     });
 
@@ -1182,13 +1287,13 @@
     normalizeStops(r.stops).forEach(s => {
       if (s.type === 'ferry') {
         const ferry = [];
-        if (s.name) ferry.push(routeLink(s.name, `⛴️ ${s.name}`, 'place ferry-place'));
+        if (s.name) ferry.push(routeLink(s.name, stopRouteLabel('⛴️', s.name, s.date), 'place ferry-place'));
         if (s.name && s.toName) ferry.push('<span class="arrow ferry-arrow">⇢</span>');
         if (s.toName) ferry.push(routeLink(s.toName, `⚓ ${s.toName}`, 'place ferry-place'));
         if (ferry.length) segments.push(`<span>${ferry.join('')}</span>`);
       } else if (s.name) {
         const icon = s.vehicle === 'ferry' ? '⛴️' : '🏍️';
-        segments.push(routeLink(s.name, `${icon} ${s.name}`));
+        segments.push(routeLink(s.name, stopRouteLabel(icon, s.name, s.date)));
       }
     });
     if (r.to) segments.push(routeLink(r.to, `📍 ${r.to}`));
@@ -1196,7 +1301,7 @@
   }
 
   function renderStopNotes(r) {
-    const notes = normalizeStops(r.stops).filter(s => s.memo);
+    const notes = normalizeStops(r.stops).filter(s => s.memo || s.date);
     if (!notes.length) return '';
     return `
       <div style="margin-bottom:10px;">
@@ -1213,13 +1318,25 @@
             title = `🏍️ ${s.name}`;
             color = '#e94560';
           }
+          const dateLine = s.date
+            ? `<div style="font-size:0.78rem;color:#aaa;margin-bottom:3px;">📅 ${escape(formatDate(s.date))}</div>`
+            : '';
+          const memoLine = s.memo
+            ? `<div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>`
+            : '';
           return `
             <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
               <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${safeRating ? `　<span style="color:#f5a623;">${'★'.repeat(safeRating)}${'☆'.repeat(5-safeRating)}</span>` : ''}</div>
-              <div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>
+              ${dateLine}
+              ${memoLine}
             </div>`;
         }).join('')}
       </div>`;
+  }
+
+  function stopRouteLabel(icon, name, date) {
+    const dateLabel = formatShortDate(date);
+    return `${icon} ${dateLabel ? `${dateLabel} ` : ''}${name}`;
   }
 
   function formatDate(d) {
@@ -1227,6 +1344,12 @@
     const [y, m, day] = d.split('-');
     if (!/^\d{4}$/.test(y) || !/^\d{2}$/.test(m) || !/^\d{2}$/.test(day)) return '';
     return `${y}年${m}月${day}日`;
+  }
+  function formatShortDate(d) {
+    if (!d) return '';
+    const [y, m, day] = d.split('-');
+    if (!/^\d{4}$/.test(y) || !/^\d{2}$/.test(m) || !/^\d{2}$/.test(day)) return '';
+    return `${Number(m)}/${Number(day)}`;
   }
   function formatDateRange(r) {
     const from = r.dateFrom || r.date;
@@ -1248,6 +1371,14 @@
   function safeNumber(value) {
     const num = Number(value);
     return Number.isFinite(num) && num > 0 ? num : 0;
+  }
+  function normalizeDistanceKm(value) {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  }
+  function normalizeDateValue(value) {
+    const text = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
   }
   function clampInt(value, min, max) {
     const num = Number.parseInt(value, 10);
