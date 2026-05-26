@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-V861ROySjjfh9XtbBZReLjsUwWjq0FZcg/tA+IsE8WE=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-R2IcnwZ8oC9m00dAbGV+RH+bq8jNb8/qQATvwQT+yHs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -996,12 +996,16 @@
     const b = await getCachedCoord(to, coordCache);
     const orsKey = getStoredValue(ROUTING_KEY_STORAGE);
     if (orsKey) {
-      const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(orsKey)}&start=${a.lon},${a.lat}&end=${b.lon},${b.lat}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const meters = data?.features?.[0]?.properties?.summary?.distance;
-        if (Number.isFinite(meters)) return meters / 1000;
+      try {
+        const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(orsKey)}&start=${a.lon},${a.lat}&end=${b.lon},${b.lat}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          const meters = data?.features?.[0]?.properties?.summary?.distance;
+          if (Number.isFinite(meters)) return meters / 1000;
+        }
+      } catch (_) {
+        // ORS到達不能（CSP/ネットワーク等）→ OSRMへフォールバック
       }
     }
     const res = await fetch(
