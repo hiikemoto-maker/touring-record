@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-silE5hFAuQE1FSOjXJ6/P0EZat6PnlR2b+R4cV2tUKI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-+4xlb7Zzd0pA83NAeei5NyMLujupaWxr3baiW1Mj4Fc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -965,7 +965,7 @@
           <option value="ferry" ${vehicle === 'ferry' ? 'selected' : ''}>⛴️ フェリー</option>
         </select>
       </div>
-      <label>📅 立ち寄り日（任意）</label>
+      <label>📅 ${isFerry ? '乗船日（任意）' : '立ち寄り日（任意）'}</label>
       <input type="date" class="stop-date" value="${escapeAttr(date || '')}" />
       <div class="place-row">
         <input type="text" class="stop-name" placeholder="${isFerry ? '⛴️ 乗船港（例：大洗港）' : '📍 場所の名前（例：道の駅 足柄）'}" value="${escapeAttr(name)}" />
@@ -1297,7 +1297,11 @@
     const unassigned = Math.round(Number(unassignedKm || 0) * 10) / 10;
     if (!result.length) return distributeKmAcrossDates(totalKm, dates);
     if (unassigned > 0) {
-      distributeKmAcrossDates(unassigned, dates).forEach(d => addDailyBikeKm(dailyMap, d.date, d.bikeKm));
+      // 未日付セグメントは、日付確定済みの日に上乗せしない（例：フェリー乗船前の走行が到着日に混入するのを防ぐ）
+      const datesWithSegment = new Set(result.map(r => r.date));
+      const undatedDates = dates.filter(d => !datesWithSegment.has(d));
+      const targetDates = undatedDates.length > 0 ? undatedDates : dates;
+      distributeKmAcrossDates(unassigned, targetDates).forEach(d => addDailyBikeKm(dailyMap, d.date, d.bikeKm));
       return buildAutoDailyDistances(dailyMap, 0, totalKm, dateFrom, dateTo);
     }
     return result.sort((a, b) => a.date.localeCompare(b.date));
@@ -1394,13 +1398,14 @@
     let current = from || '';
     const normalizedStops = normalizeStops(stops);
     const hasDatedStops = normalizedStops.some(s => s.date);
+    let prevDate = '';
     const pushSegment = segment => {
       if (segment.from && segment.to && segment.from !== segment.to) segments.push(segment);
     };
     normalizedStops.forEach(s => {
       if (s.type === 'ferry') {
-        // フェリー前のバイク区間は、直前の地点から乗船港まで。
-        pushSegment({ type: 'driving', from: current, to: s.name, date: s.date });
+        // 乗船前バイク区間：前の立ち寄り日を使う（フェリー日付は乗船日なので到着日を誤入力しても誤計上しない）
+        pushSegment({ type: 'driving', from: current, to: s.name, date: prevDate });
         if (s.name && s.toName) {
           pushSegment({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm, date: s.date });
         }
@@ -1414,6 +1419,7 @@
           date: s.date
         });
         current = s.name;
+        if (s.date) prevDate = s.date;
       }
     });
     if (current && to) {
