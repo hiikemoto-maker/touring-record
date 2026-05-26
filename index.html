@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-lkNdMBLzosSpYVLtYARGuC0tuFnWOIsbs8n5YaUC7QU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-FB7yWdzUDoffKGTcwB1ukClXdPUGQWZ7ozr61CLXdBc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -1331,17 +1331,20 @@
     let current = from || '';
     const normalizedStops = normalizeStops(stops);
     const hasDatedStops = normalizedStops.some(s => s.date);
+    const pushSegment = segment => {
+      if (segment.from && segment.to && segment.from !== segment.to) segments.push(segment);
+    };
     normalizedStops.forEach(s => {
       if (s.type === 'ferry') {
-        if (current && s.name) {
-          segments.push({ type: 'driving', from: current, to: s.name, date: s.date });
-        }
+        // フェリー前のバイク区間は、直前の地点から乗船港まで。
+        pushSegment({ type: 'driving', from: current, to: s.name, date: s.date });
         if (s.name && s.toName) {
-          segments.push({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm, date: s.date });
+          pushSegment({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm, date: s.date });
         }
+        // フェリー後のバイク区間は、必ず下船港から次の立ち寄り地へつなぐ。
         current = s.toName || s.name || current;
       } else if (s.name) {
-        segments.push({
+        pushSegment({
           type: s.vehicle === 'ferry' ? 'ferry' : 'driving',
           from: current,
           to: s.name,
@@ -1351,9 +1354,9 @@
       }
     });
     if (current && to) {
-      segments.push({ type: 'driving', from: current, to, date: hasDatedStops ? dateTo : '' });
+      pushSegment({ type: 'driving', from: current, to, date: hasDatedStops ? dateTo : '' });
     }
-    return segments.filter(s => s.from && s.to && s.from !== s.to);
+    return segments;
   }
 
   // Google Maps連携
