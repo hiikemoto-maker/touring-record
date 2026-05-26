@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-UwSjBvutvLf72xTvNWZi3rDMN9wuM1GQ7ANXiaaxBhs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-lkNdMBLzosSpYVLtYARGuC0tuFnWOIsbs8n5YaUC7QU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -1201,6 +1201,22 @@
     return (dailyDistances || []).reduce((sum, d) => sum + Number(d.bikeKm || 0), 0);
   }
 
+  function getRecordDailyDistances(record, fallbackBikeKm = 0) {
+    return normalizeDailyDistances(
+      record.dailyDistances,
+      record.dateFrom || record.date,
+      record.dateTo || record.dateFrom || record.date,
+      fallbackBikeKm
+    );
+  }
+
+  function getRecordBikeKm(record) {
+    const distances = normalizeDistances(record.distances, record.km, record.stops);
+    const fallbackBikeKm = distanceSumByKind(distances, DISTANCE_KIND_BIKE);
+    const dailyBikeKm = totalDailyBikeKm(getRecordDailyDistances(record, 0));
+    return dailyBikeKm > 0 ? dailyBikeKm : fallbackBikeKm;
+  }
+
   function updateDailyDistanceSummary() {
     const summary = document.getElementById('daily-distance-summary');
     if (!summary) return;
@@ -2082,7 +2098,7 @@
     });
 
     const all       = getRecords();
-    const totalBikeKm  = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km, r.stops), DISTANCE_KIND_BIKE), 0);
+    const totalBikeKm  = all.reduce((s, r) => s + getRecordBikeKm(r), 0);
     const totalFerryKm = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km, r.stops), DISTANCE_KIND_FERRY), 0);
     const totalCost = all.reduce((s, r) => s + safeNumber(r.fuelCost), 0);
     const totalDays = all.reduce((s, r) => {
@@ -2105,7 +2121,7 @@
 
     el.innerHTML = list.map(r => {
       const distances = normalizeDistances(r.distances, r.km, r.stops);
-      const bikeKm = distanceSumByKind(distances, DISTANCE_KIND_BIKE);
+      const bikeKm = getRecordBikeKm(r);
       const ferryKm = distanceSumByKind(distances, DISTANCE_KIND_FERRY);
       const otherDistances = distances.filter(d => d.kind !== DISTANCE_KIND_BIKE && d.kind !== DISTANCE_KIND_FERRY);
       const fuel = safeNumber(r.fuel);
@@ -2206,7 +2222,7 @@
   }
 
   function renderDailyDistances(r, bikeKm) {
-    const daily = normalizeDailyDistances(r.dailyDistances, r.dateFrom || r.date, r.dateTo || r.dateFrom || r.date, bikeKm);
+    const daily = getRecordDailyDistances(r, bikeKm);
     if (!daily.length) return '';
     return `
       <div class="daily-distance-display">
