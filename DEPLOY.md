@@ -36,6 +36,18 @@ Build commandは空、Publish directoryは `.` です。
 
 ## Cloudflare D1 同期API
 
+### npm / wrangler なしで公開する方法
+
+Cloudflareで無料のAPIトークンを作成し、次を実行します。
+
+```sh
+CLOUDFLARE_API_TOKEN=... node cloudflare/deploy-sync-api.mjs
+```
+
+成功すると同期API URLが表示されます。
+
+### wrangler を使う方法
+
 1. CloudflareでD1データベースを作成する
 2. `cloudflare/wrangler.toml.example` を `wrangler.toml` にコピーする
 3. `database_id` をD1のIDに差し替える
