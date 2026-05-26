@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-feKzHw3OdXmus3O3YFScidVzBxpYF3C6BxqzHWaGNrc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-P6im757iiMcVxrNMdDLAF/78byTHigBA0HVIbGXwZOs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -569,6 +569,45 @@
       z-index: 200;
     }
     .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* エラーダイアログ（中央・手動クローズ） */
+    .error-dialog {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      max-width: min(90vw, 460px);
+      background: #1f2742;
+      color: #fff;
+      padding: 20px 44px 20px 22px;
+      border: 1px solid #e94560;
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      z-index: 300;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .error-dialog.show {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    .error-dialog-close {
+      position: absolute;
+      top: 6px;
+      right: 10px;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .error-dialog-close:hover { color: #e94560; }
   </style>
   <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js" integrity="sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL" crossorigin="anonymous"></script>
 </head>
@@ -761,6 +800,12 @@
 
 <!-- トースト -->
 <div class="toast" id="toast"></div>
+
+<!-- エラーダイアログ -->
+<div class="error-dialog" id="error-dialog" role="alert" aria-live="assertive">
+  <button type="button" class="error-dialog-close" id="error-dialog-close" aria-label="閉じる">✕</button>
+  <span id="error-dialog-text"></span>
+</div>
 
 <script>
   let rating = 0;
@@ -1086,7 +1131,7 @@
         : '';
       showToast(`🛣️ 走行距離：約 ${km} km${detail}`);
     } catch (e) {
-      showToast('⚠️ ' + e.message);
+      showError(e.message);
     } finally {
       btn.textContent = '🔄 自動計算';
       btn.disabled = false;
@@ -1486,7 +1531,7 @@
       queueAutoSync();
       showToast(`📥 記録を読み込みました（${mergedRecords.length}件）`);
     } catch (e) {
-      showToast('⚠️ ' + e.message);
+      showError(e.message);
     }
   }
 
@@ -1532,7 +1577,7 @@
       if (!options.silent) showToast(`☁️ 同期しました（${mergedRecords.length}件）`);
     } catch (e) {
       updateSyncStatus('同期失敗');
-      if (!options.silent) showToast('⚠️ ' + e.message);
+      if (!options.silent) showError(e.message);
     } finally {
       syncInProgress = false;
       if (btn) btn.disabled = false;
@@ -1784,6 +1829,7 @@
     document.getElementById('search').addEventListener('input', renderList);
     document.getElementById('btn-save-sync').addEventListener('click', saveSyncSettings);
     document.getElementById('btn-save-routing').addEventListener('click', saveRoutingSettings);
+    document.getElementById('error-dialog-close').addEventListener('click', hideError);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('btn-export-records').addEventListener('click', exportRecords);
     document.getElementById('btn-import-records').addEventListener('click', () => {
@@ -1889,6 +1935,20 @@
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // エラーダイアログ（中央・×で閉じるまで残る）
+  function showError(msg) {
+    const dialog = document.getElementById('error-dialog');
+    const text = document.getElementById('error-dialog-text');
+    if (!dialog || !text) { showToast('⚠️ ' + msg); return; }
+    text.textContent = '⚠️ ' + msg;
+    dialog.classList.add('show');
+  }
+
+  function hideError() {
+    const dialog = document.getElementById('error-dialog');
+    if (dialog) dialog.classList.remove('show');
   }
 
   // 初期化
