@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-du57YnloCjrYS10RTm89UzgbHKIJIyYcDsRnqckaZds=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-pjnLi2IxLdfJXi6xY+/KRsZtbb5jozwZjABm/FQlnO4=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -427,6 +427,12 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+    .backup-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
     .btn-sync {
       background: #0f3460;
       border: 1px solid #83d4cf;
@@ -727,6 +733,11 @@
         <button type="button" class="btn-sync" id="btn-save-sync">設定を保存</button>
         <button type="button" class="btn-sync" id="btn-sync-now">今すぐ同期</button>
       </div>
+      <div class="backup-actions">
+        <button type="button" class="btn-sync" id="btn-export-records">記録を書き出し</button>
+        <button type="button" class="btn-sync" id="btn-import-records">記録を読み込み</button>
+      </div>
+      <input id="import-records-file" type="file" accept="application/json,.json" style="display:none;" />
     </div>
     <div id="record-list"></div>
   </div>
@@ -1374,6 +1385,53 @@
     syncNow({ silent: true });
   }
 
+  function exportRecords() {
+    const payload = {
+      app: 'touring-record',
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      records: prepareLocalRecordsForSync(),
+      deletedRecords: Object.entries(getDeletedRecordMap()).map(([id, deletedAt]) => ({ id, deletedAt }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `touring-records-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('📦 記録を書き出しました');
+  }
+
+  async function importRecordsFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const importedRecords = Array.isArray(data) ? data : data.records;
+      if (!Array.isArray(importedRecords)) throw new Error('記録ファイルを読み込めません');
+
+      const localRecords = prepareLocalRecordsForSync();
+      const localDeleted = getDeletedRecordMap();
+      const importedDeleted = Array.isArray(data.deletedRecords) ? data.deletedRecords : [];
+      const mergedDeleted = mergeDeletedRecords(localDeleted, importedDeleted);
+      const fallbackTime = Date.now();
+      const preparedImport = importedRecords.map(record => ensureRecordUpdatedAt(record, fallbackTime));
+      const mergedRecords = mergeSyncedRecords(localRecords, preparedImport, mergedDeleted);
+
+      saveDeletedRecordMap(mergedDeleted);
+      saveRecords(mergedRecords);
+      renderList();
+      queueAutoSync();
+      showToast(`📥 記録を読み込みました（${mergedRecords.length}件）`);
+    } catch (e) {
+      showToast('⚠️ ' + e.message);
+    }
+  }
+
   async function syncNow(options = {}) {
     if (syncInProgress) return;
     const { apiUrl, syncKey } = getSyncSettings();
@@ -1668,6 +1726,14 @@
     document.getElementById('search').addEventListener('input', renderList);
     document.getElementById('btn-save-sync').addEventListener('click', saveSyncSettings);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
+    document.getElementById('btn-export-records').addEventListener('click', exportRecords);
+    document.getElementById('btn-import-records').addEventListener('click', () => {
+      document.getElementById('import-records-file').click();
+    });
+    document.getElementById('import-records-file').addEventListener('change', e => {
+      importRecordsFile(e.target.files && e.target.files[0]);
+      e.target.value = '';
+    });
     document.getElementById('f-photo').addEventListener('change', previewPhotos);
     document.getElementById('photo-area').addEventListener('click', () => {
       document.getElementById('f-photo').click();
