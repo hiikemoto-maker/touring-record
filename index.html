@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-+4xlb7Zzd0pA83NAeei5NyMLujupaWxr3baiW1Mj4Fc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-32kGybS7yUNszuv26KyBm6prTAeVMW7Vvnt3bqVOsPI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -298,6 +298,8 @@
     .calc-basis-kind { color: #83d4cf; white-space: nowrap; }
     .calc-basis-route { min-width: 0; overflow-wrap: anywhere; }
     .calc-basis-km { color: #fff; font-weight: bold; white-space: nowrap; }
+    .calc-basis-row.is-suspicious .calc-basis-km { color: #e94560; }
+    .calc-basis-warn { cursor: help; font-style: normal; }
     .btn-calc {
       background: #0f3460;
       border: 1px solid #2a4a7f;
@@ -1335,10 +1337,13 @@
       const kind = isFerry ? '⛴️ フェリー' : '🏍️ バイク';
       const date = item.date ? `${formatShortDate(item.date)} ` : '';
       const estimated = item.estimated ? ' 推定' : '';
+      // バイク区間が400km超の場合は地名の曖昧マッチを疑う
+      const suspicious = !isFerry && item.km > 400;
+      const warn = suspicious ? ' <span class="calc-basis-warn" title="地名が別の場所にマッチした可能性があります。「大観峰 熊本」のように都道府県名を加えてみてください">⚠️</span>' : '';
       return `
-        <div class="calc-basis-row">
+        <div class="calc-basis-row${suspicious ? ' is-suspicious' : ''}">
           <div class="calc-basis-kind">${kind}</div>
-          <div class="calc-basis-route">${escape(date)}${escape(item.from)} → ${escape(item.to)}${estimated}</div>
+          <div class="calc-basis-route">${escape(date)}${escape(item.from)} → ${escape(item.to)}${estimated}${warn}</div>
           <div class="calc-basis-km">${Math.round(item.km).toLocaleString()} km</div>
         </div>`;
     }).join('');
@@ -1474,11 +1479,14 @@
   }
 
   // 走行距離の自動計算
-  async function geocode(place) {
+  // hint: 直前に確定した座標。複数候補から最近傍を選ぶ位置バイアスとして使う。
+  async function geocode(place, hint = null) {
     const orsKey = getStoredValue(ROUTING_KEY_STORAGE);
     if (orsKey) {
       try {
-        const url = `https://api.openrouteservice.org/geocode/search?api_key=${encodeURIComponent(orsKey)}&text=${encodeURIComponent(place)}&boundary.country=JP&size=1`;
+        // ORS: focus.point で位置バイアスを渡す
+        const focusParam = hint ? `&focus.point.lat=${hint.lat}&focus.point.lon=${hint.lon}` : '';
+        const url = `https://api.openrouteservice.org/geocode/search?api_key=${encodeURIComponent(orsKey)}&text=${encodeURIComponent(place)}&boundary.country=JP&size=1${focusParam}`;
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
@@ -1493,8 +1501,10 @@
     }
     let res;
     try {
+      // Nominatim: 上位3件取得し hint に最近傍の結果を選ぶ（同名地名の誤マッチを防ぐ）
+      const limit = hint ? 3 : 1;
       res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`,
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=${limit}&countrycodes=jp`,
         { headers: { 'Accept-Language': 'ja' } }
       );
     } catch (_) {
@@ -1503,19 +1513,28 @@
     if (!res.ok) throw new Error(`地名検索サーバーがエラーを返しました (HTTP ${res.status})`);
     const data = await res.json();
     if (!data.length) throw new Error(`「${place}」の場所が見つかりませんでした`);
+    if (hint && data.length > 1) {
+      // 直前地点に最も近い候補を選ぶ
+      const best = data.reduce((a, b) =>
+        haversineKm(hint, { lat: parseFloat(a.lat), lon: parseFloat(a.lon) }) <=
+        haversineKm(hint, { lat: parseFloat(b.lat), lon: parseFloat(b.lon) }) ? a : b
+      );
+      return { lat: parseFloat(best.lat), lon: parseFloat(best.lon) };
+    }
     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
   }
 
-  async function getCachedCoord(place, cache) {
+  async function getCachedCoord(place, cache, hint = null) {
     if (!cache.has(place)) {
-      cache.set(place, await geocode(place));
+      cache.set(place, await geocode(place, hint));
     }
     return cache.get(place);
   }
 
-  async function calcDrivingKm(from, to, coordCache) {
-    const a = await getCachedCoord(from, coordCache);
-    const b = await getCachedCoord(to, coordCache);
+  async function calcDrivingKm(from, to, coordCache, hint = null) {
+    const a = await getCachedCoord(from, coordCache, hint);
+    // to のジオコーディングには from の座標を位置ヒントとして渡す
+    const b = await getCachedCoord(to, coordCache, a);
     const orsKey = getStoredValue(ROUTING_KEY_STORAGE);
     if (orsKey) {
       try {
@@ -1589,19 +1608,24 @@
       const dailyMap = new Map();
       const calcBasis = [];
 
+      let routeHint = null; // 直前に確定した座標。次のジオコーディングの位置バイアスとして使う。
       for (const segment of segments) {
         if (segment.type === 'ferry') {
           const result = await calcFerryKm(segment, coordCache);
           ferryKm += result.km;
           hasEstimatedFerry = hasEstimatedFerry || result.estimated;
           calcBasis.push({ ...segment, km: result.km, estimated: result.estimated });
+          // フェリー到着港の座標をヒントに更新
+          if (segment.to) routeHint = await getCachedCoord(segment.to, coordCache, routeHint);
         } else {
-          const segmentKm = await calcDrivingKm(segment.from, segment.to, coordCache);
+          const segmentKm = await calcDrivingKm(segment.from, segment.to, coordCache, routeHint);
           drivingKm += segmentKm;
           if (!addDailyBikeKm(dailyMap, segment.date, segmentKm)) {
             unassignedDailyKm += segmentKm;
           }
           calcBasis.push({ ...segment, km: segmentKm, estimated: false });
+          // セグメント終点の座標をヒントに更新
+          if (segment.to) routeHint = coordCache.get(segment.to) || routeHint;
         }
       }
 
