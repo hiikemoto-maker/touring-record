@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-ZOL7zDTYq4Xq1KAIC++9ZsA+vgW7iQu1qTDU+hxEfyQ=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-UwSjBvutvLf72xTvNWZi3rDMN9wuM1GQ7ANXiaaxBhs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -238,6 +238,38 @@
       font-size: 0.9rem;
     }
     .btn-add-distance:hover { color: #fff; border-color: #fff; }
+    .daily-distance-list { display: flex; flex-direction: column; gap: 8px; }
+    .daily-distance-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 8px;
+      align-items: center;
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .daily-distance-date { color: #ccc; font-size: 0.86rem; }
+    .daily-distance-row input { width: 100%; }
+    .daily-distance-summary {
+      color: #aaa;
+      font-size: 0.82rem;
+      margin-top: 6px;
+    }
+    .daily-distance-display {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .daily-distance-pill {
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 6px;
+      color: #ddd;
+      font-size: 0.78rem;
+      padding: 5px 8px;
+    }
     .btn-calc {
       background: #0f3460;
       border: 1px solid #2a4a7f;
@@ -729,6 +761,11 @@
         </div>
       </div>
       <div class="form-group">
+        <label>📅 日毎のバイク距離（km）</label>
+        <div class="daily-distance-list" id="daily-distance-list"></div>
+        <div class="daily-distance-summary" id="daily-distance-summary">日付を選ぶと日毎の入力欄が出ます</div>
+      </div>
+      <div class="form-group">
         <label>🌤️ 天気</label>
         <select id="f-weather">
           <option value="☀️ 晴れ">☀️ 晴れ</option>
@@ -1058,7 +1095,170 @@
     return (distances || []).reduce((s, d) => s + Number(d.km || 0), 0);
   }
 
-  function setDistancesFromAuto(drivingKm, ferryKm) {
+  function getBikeKm() {
+    const dailyKm = totalDailyBikeKm(getDailyDistances());
+    return dailyKm > 0 ? dailyKm : distanceSumByKind(getDistances(), DISTANCE_KIND_BIKE);
+  }
+
+  function setBikeDistanceTotal(km) {
+    const rows = Array.from(document.querySelectorAll('#distance-list .distance-row'));
+    const row = rows.find(r => (r.querySelector('.distance-kind').value || '').trim() === DISTANCE_KIND_BIKE);
+    const rounded = Math.round(Number(km || 0) * 10) / 10;
+    if (rounded <= 0) return;
+    if (row) {
+      row.querySelector('.distance-km').value = rounded;
+    } else {
+      addDistanceRow(DISTANCE_KIND_BIKE, rounded);
+    }
+  }
+
+  function getDateList(dateFrom, dateTo) {
+    if (!dateFrom) return [];
+    const end = dateTo && dateTo >= dateFrom ? dateTo : dateFrom;
+    const result = [];
+    const current = new Date(`${dateFrom}T00:00:00`);
+    const last = new Date(`${end}T00:00:00`);
+    if (Number.isNaN(current.getTime()) || Number.isNaN(last.getTime())) return [];
+    while (current <= last && result.length < 31) {
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      result.push(`${y}-${m}-${d}`);
+      current.setDate(current.getDate() + 1);
+    }
+    return result;
+  }
+
+  function distributeKmAcrossDates(totalKm, dates) {
+    const total = Math.round(Number(totalKm || 0) * 10) / 10;
+    if (!dates.length || total <= 0) return [];
+    const base = Math.floor((total / dates.length) * 10) / 10;
+    let remaining = Math.round((total - base * dates.length) * 10) / 10;
+    return dates.map((date, index) => {
+      let bikeKm = base;
+      if (index === dates.length - 1) bikeKm = Math.round((bikeKm + remaining) * 10) / 10;
+      return { date, bikeKm };
+    });
+  }
+
+  function normalizeDailyDistances(raw, dateFrom, dateTo, fallbackBikeKm = 0) {
+    const dates = getDateList(dateFrom, dateTo);
+    const validDates = new Set(dates);
+    if (Array.isArray(raw)) {
+      const normalized = raw
+        .map(d => {
+          const date = normalizeDateValue(d?.date);
+          const bikeKm = normalizeDistanceKm(d?.bikeKm ?? d?.km);
+          if (!date || !bikeKm || (validDates.size && !validDates.has(date))) return null;
+          return { date, bikeKm };
+        })
+        .filter(Boolean);
+      if (normalized.length) return normalized;
+    }
+    return dates.length > 1 ? distributeKmAcrossDates(fallbackBikeKm, dates) : [];
+  }
+
+  function renderDailyDistanceRows(dailyDistances = []) {
+    const list = document.getElementById('daily-distance-list');
+    const summary = document.getElementById('daily-distance-summary');
+    if (!list || !summary) return;
+    const dates = getDateList(
+      document.getElementById('f-date-from').value,
+      document.getElementById('f-date-to').value
+    );
+    const byDate = new Map((dailyDistances || []).map(d => [d.date, d.bikeKm]));
+    list.innerHTML = '';
+    if (!dates.length) {
+      summary.textContent = '日付を選ぶと日毎の入力欄が出ます';
+      return;
+    }
+    dates.forEach(date => {
+      const row = document.createElement('div');
+      row.className = 'daily-distance-row';
+      row.dataset.date = date;
+      row.innerHTML = `
+        <div class="daily-distance-date">${escape(formatDate(date))}</div>
+        <input type="number" class="daily-distance-km" placeholder="バイクkm" min="0" step="0.1" />
+      `;
+      const input = row.querySelector('.daily-distance-km');
+      if (byDate.has(date)) input.value = byDate.get(date);
+      input.addEventListener('input', updateDistanceFromDaily);
+      list.appendChild(row);
+    });
+    updateDailyDistanceSummary();
+  }
+
+  function getDailyDistances() {
+    return Array.from(document.querySelectorAll('#daily-distance-list .daily-distance-row'))
+      .map(row => {
+        const bikeKm = normalizeDistanceKm(row.querySelector('.daily-distance-km')?.value);
+        return bikeKm ? { date: row.dataset.date, bikeKm } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function totalDailyBikeKm(dailyDistances) {
+    return (dailyDistances || []).reduce((sum, d) => sum + Number(d.bikeKm || 0), 0);
+  }
+
+  function updateDailyDistanceSummary() {
+    const summary = document.getElementById('daily-distance-summary');
+    if (!summary) return;
+    const rows = document.querySelectorAll('#daily-distance-list .daily-distance-row').length;
+    const total = Math.round(totalDailyBikeKm(getDailyDistances()) * 10) / 10;
+    summary.textContent = rows ? `日毎合計：${total.toLocaleString()} km` : '日付を選ぶと日毎の入力欄が出ます';
+  }
+
+  function updateDistanceFromDaily() {
+    const total = totalDailyBikeKm(getDailyDistances());
+    if (total > 0) setBikeDistanceTotal(total);
+    updateDailyDistanceSummary();
+    updateFuelEff();
+  }
+
+  function syncDailyDistanceRows() {
+    const existing = getDailyDistances();
+    const bikeKm = distanceSumByKind(getDistances(), DISTANCE_KIND_BIKE);
+    renderDailyDistanceRows(existing.length ? existing : normalizeDailyDistances([], document.getElementById('f-date-from').value, document.getElementById('f-date-to').value, bikeKm));
+  }
+
+  function setDailyDistancesFromTotal(totalKm) {
+    const dates = getDateList(
+      document.getElementById('f-date-from').value,
+      document.getElementById('f-date-to').value
+    );
+    renderDailyDistanceRows(distributeKmAcrossDates(totalKm, dates));
+  }
+
+  function addDailyBikeKm(map, date, km) {
+    const day = normalizeDateValue(date);
+    const amount = Number(km || 0);
+    if (!day || amount <= 0) return false;
+    map.set(day, Math.round((Number(map.get(day) || 0) + amount) * 10) / 10);
+    return true;
+  }
+
+  function buildAutoDailyDistances(dailyMap, unassignedKm, totalKm, dateFrom, dateTo) {
+    const dates = getDateList(dateFrom, dateTo);
+    const validDates = new Set(dates);
+    const result = [];
+    dailyMap.forEach((bikeKm, date) => {
+      if (validDates.has(date) && bikeKm > 0) result.push({ date, bikeKm: Math.round(bikeKm * 10) / 10 });
+    });
+    const unassigned = Math.round(Number(unassignedKm || 0) * 10) / 10;
+    if (!result.length) return distributeKmAcrossDates(totalKm, dates);
+    if (unassigned > 0) {
+      distributeKmAcrossDates(unassigned, dates).forEach(d => addDailyBikeKm(dailyMap, d.date, d.bikeKm));
+      return buildAutoDailyDistances(dailyMap, 0, totalKm, dateFrom, dateTo);
+    }
+    return result.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function setDailyDistancesFromAuto(dailyMap, unassignedKm, totalKm, dateFrom, dateTo) {
+    renderDailyDistanceRows(buildAutoDailyDistances(dailyMap, unassignedKm, totalKm, dateFrom, dateTo));
+  }
+
+  function setDistancesFromAuto(drivingKm, ferryKm, dailyMap = new Map(), unassignedKm = 0, dateFrom = '', dateTo = '') {
     // 自動計算の結果で「バイク」「フェリー」行を上書き or 追加。他の種類はそのまま。
     const rows = Array.from(document.querySelectorAll('#distance-list .distance-row'));
     const findRow = kindName => rows.find(r => (r.querySelector('.distance-kind').value || '').trim() === kindName);
@@ -1074,6 +1274,7 @@
     };
     upsert(DISTANCE_KIND_BIKE, drivingKm);
     upsert(DISTANCE_KIND_FERRY, ferryKm);
+    setDailyDistancesFromAuto(dailyMap, unassignedKm, drivingKm, dateFrom, dateTo);
     updateFuelEff();
   }
 
@@ -1109,29 +1310,32 @@
     return places;
   }
 
-  function getRouteSegments(from, stops, to) {
+  function getRouteSegments(from, stops, to, dateTo = '') {
     const segments = [];
     let current = from || '';
-    normalizeStops(stops).forEach(s => {
+    const normalizedStops = normalizeStops(stops);
+    const hasDatedStops = normalizedStops.some(s => s.date);
+    normalizedStops.forEach(s => {
       if (s.type === 'ferry') {
         if (current && s.name) {
-          segments.push({ type: 'driving', from: current, to: s.name });
+          segments.push({ type: 'driving', from: current, to: s.name, date: s.date });
         }
         if (s.name && s.toName) {
-          segments.push({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm });
+          segments.push({ type: 'ferry', from: s.name, to: s.toName, distanceKm: s.distanceKm, date: s.date });
         }
         current = s.toName || s.name || current;
       } else if (s.name) {
         segments.push({
           type: s.vehicle === 'ferry' ? 'ferry' : 'driving',
           from: current,
-          to: s.name
+          to: s.name,
+          date: s.date
         });
         current = s.name;
       }
     });
     if (current && to) {
-      segments.push({ type: 'driving', from: current, to });
+      segments.push({ type: 'driving', from: current, to, date: hasDatedStops ? dateTo : '' });
     }
     return segments.filter(s => s.from && s.to && s.from !== s.to);
   }
@@ -1277,9 +1481,11 @@
   }
 
   async function calcDistance() {
+    const dateFrom = document.getElementById('f-date-from').value;
+    const dateTo   = document.getElementById('f-date-to').value;
     const from = document.getElementById('f-from').value.trim();
     const to   = document.getElementById('f-to').value.trim();
-    const segments = getRouteSegments(from, getStops(), to);
+    const segments = getRouteSegments(from, getStops(), to, dateTo);
     if (segments.length < 1) { showToast('2箇所以上の場所を入力してください'); return; }
 
     const btn = document.getElementById('btn-calc');
@@ -1291,6 +1497,8 @@
       let drivingKm = 0;
       let ferryKm = 0;
       let hasEstimatedFerry = false;
+      let unassignedDailyKm = 0;
+      const dailyMap = new Map();
 
       for (const segment of segments) {
         if (segment.type === 'ferry') {
@@ -1298,12 +1506,16 @@
           ferryKm += result.km;
           hasEstimatedFerry = hasEstimatedFerry || result.estimated;
         } else {
-          drivingKm += await calcDrivingKm(segment.from, segment.to, coordCache);
+          const segmentKm = await calcDrivingKm(segment.from, segment.to, coordCache);
+          drivingKm += segmentKm;
+          if (!addDailyBikeKm(dailyMap, segment.date, segmentKm)) {
+            unassignedDailyKm += segmentKm;
+          }
         }
       }
 
       const km = Math.round(drivingKm + ferryKm);
-      setDistancesFromAuto(drivingKm, ferryKm);
+      setDistancesFromAuto(drivingKm, ferryKm, dailyMap, unassignedDailyKm, dateFrom, dateTo);
       const detail = ferryKm > 0
         ? `（🏍️ ${Math.round(drivingKm)} km + ⛴️ ${Math.round(ferryKm)} km${hasEstimatedFerry ? '・推定含む' : ''}）`
         : '';
@@ -1318,7 +1530,7 @@
 
   // 燃費の自動表示（バイク距離 / 給油量）
   function updateFuelEff() {
-    const bikeKm = distanceSumByKind(getDistances(), DISTANCE_KIND_BIKE);
+    const bikeKm = getBikeKm();
     const fuel = parseFloat(document.getElementById('f-fuel').value);
     const bar  = document.getElementById('fuel-eff-bar');
     if (bikeKm > 0 && fuel > 0) {
@@ -1338,8 +1550,10 @@
       const diff = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
       document.getElementById('days-val').textContent = diff === 1 ? '日帰り' : `${diff}日間`;
       bar.style.display = 'block';
+      syncDailyDistanceRows();
     } else {
       bar.style.display = 'none';
+      renderDailyDistanceRows([]);
     }
   }
 
@@ -1426,12 +1640,16 @@
       return;
     }
 
-    const bikeKm = distanceSumByKind(distances, DISTANCE_KIND_BIKE);
+    const dailyDistances = getDailyDistances();
+    const bikeKm = getBikeKm();
+    if (dailyDistances.length && bikeKm > 0) setBikeDistanceTotal(bikeKm);
+    const finalDistances = getDistances();
     const record = {
       id: editingId || Date.now(),
       title, dateFrom, dateTo, from, to,
       stops,
-      distances,
+      distances: finalDistances,
+      dailyDistances,
       km:       bikeKm > 0 ? Math.round(bikeKm) : null,
       fuel:     fuel     ? parseFloat(fuel)     : null,
       fuelCost: fuelCost ? parseInt(fuelCost)   : null,
@@ -1467,6 +1685,7 @@
     document.getElementById('f-to').value   = '';
     document.getElementById('distance-list').innerHTML = '';
     addDistanceRow(DISTANCE_KIND_BIKE, '');
+    renderDailyDistanceRows([]);
     document.getElementById('f-fuel').value      = '';
     document.getElementById('f-fuel-cost').value = '';
     document.getElementById('fuel-eff-bar').style.display = 'none';
@@ -1808,6 +2027,12 @@
     } else {
       distances.forEach(d => addDistanceRow(d.kind, d.km));
     }
+    renderDailyDistanceRows(normalizeDailyDistances(
+      r.dailyDistances,
+      r.dateFrom || r.date || '',
+      r.dateTo || r.dateFrom || r.date || '',
+      distanceSumByKind(distances, DISTANCE_KIND_BIKE)
+    ));
     document.getElementById('f-fuel').value = r.fuel || '';
     document.getElementById('f-fuel-cost').value = r.fuelCost || '';
     document.getElementById('f-weather').value = r.weather || '☀️ 晴れ';
@@ -1819,6 +2044,12 @@
     renderPhotoPreview();
     setMainRating(r.rating || 0);
     updateDays();
+    renderDailyDistanceRows(normalizeDailyDistances(
+      r.dailyDistances,
+      r.dateFrom || r.date || '',
+      r.dateTo || r.dateFrom || r.date || '',
+      distanceSumByKind(distances, DISTANCE_KIND_BIKE)
+    ));
     updateFuelEff();
     document.getElementById('save-btn').textContent = '💾 変更を保存する';
     document.getElementById('cancel-edit-btn').style.display = 'block';
@@ -1892,6 +2123,7 @@
           ${renderRouteFlow(r)}
         </div>
         ${renderStopNotes(r)}
+        ${renderDailyDistances(r, bikeKm)}
         <div class="record-meta">
           ${bikeKm  ? `<span>🏍️ ${Math.round(bikeKm).toLocaleString()} km</span>` : ''}
           ${ferryKm ? `<span>⛴️ ${Math.round(ferryKm).toLocaleString()} km</span>` : ''}
@@ -1970,6 +2202,15 @@
               ${memoLine}
             </div>`;
         }).join('')}
+      </div>`;
+  }
+
+  function renderDailyDistances(r, bikeKm) {
+    const daily = normalizeDailyDistances(r.dailyDistances, r.dateFrom || r.date, r.dateTo || r.dateFrom || r.date, bikeKm);
+    if (!daily.length) return '';
+    return `
+      <div class="daily-distance-display">
+        ${daily.map(d => `<span class="daily-distance-pill">🏍️ ${escape(formatShortDate(d.date))} ${Math.round(d.bikeKm).toLocaleString()} km</span>`).join('')}
       </div>`;
   }
 
@@ -2169,6 +2410,7 @@
   // 初期化
   setDefaultDates();
   addDistanceRow(DISTANCE_KIND_BIKE, '');
+  renderDailyDistanceRows([]);
   initSyncControls();
   initRoutingControls();
   bindEvents();
