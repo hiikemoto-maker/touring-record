@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-pjnLi2IxLdfJXi6xY+/KRsZtbb5jozwZjABm/FQlnO4=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-V861ROySjjfh9XtbBZReLjsUwWjq0FZcg/tA+IsE8WE=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -738,6 +738,16 @@
         <button type="button" class="btn-sync" id="btn-import-records">記録を読み込み</button>
       </div>
       <input id="import-records-file" type="file" accept="application/json,.json" style="display:none;" />
+      <div class="sync-header" style="margin-top:0.75rem;">
+        <div class="sync-title">🛣 距離計算API（任意）</div>
+        <div class="sync-status" id="routing-status">未設定</div>
+      </div>
+      <div class="sync-grid">
+        <input id="routing-key" type="password" placeholder="OpenRouteService APIキー" autocomplete="off" />
+      </div>
+      <div class="sync-actions">
+        <button type="button" class="btn-sync" id="btn-save-routing">キーを保存</button>
+      </div>
     </div>
     <div id="record-list"></div>
   </div>
@@ -763,6 +773,7 @@
   const SYNC_KEY_STORAGE = 'touring_sync_key';
   const SYNC_API_STORAGE = 'touring_sync_api_url';
   const SYNC_DELETED_STORAGE = 'touring_deleted_records';
+  const ROUTING_KEY_STORAGE = 'touring_routing_key';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -983,6 +994,16 @@
   async function calcDrivingKm(from, to, coordCache) {
     const a = await getCachedCoord(from, coordCache);
     const b = await getCachedCoord(to, coordCache);
+    const orsKey = getStoredValue(ROUTING_KEY_STORAGE);
+    if (orsKey) {
+      const url = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(orsKey)}&start=${a.lon},${a.lat}&end=${b.lon},${b.lat}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const meters = data?.features?.[0]?.properties?.summary?.distance;
+        if (Number.isFinite(meters)) return meters / 1000;
+      }
+    }
     const res = await fetch(
       `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
     );
@@ -1313,6 +1334,27 @@
     }
     const { apiUrl, syncKey } = getSyncSettings();
     el.textContent = apiUrl && syncKey ? '設定済み' : '未設定';
+  }
+
+  function initRoutingControls() {
+    const input = document.getElementById('routing-key');
+    if (input) input.value = getStoredValue(ROUTING_KEY_STORAGE);
+    updateRoutingStatus();
+  }
+
+  function saveRoutingSettings() {
+    const input = document.getElementById('routing-key');
+    const key = String(input?.value || '').trim();
+    setStoredValue(ROUTING_KEY_STORAGE, key);
+    updateRoutingStatus();
+    showToast(key ? '🛣 距離計算APIキーを保存しました' : '🛣 距離計算APIキーを削除しました（OSRMにフォールバック）');
+  }
+
+  function updateRoutingStatus() {
+    const el = document.getElementById('routing-status');
+    if (!el) return;
+    const key = getStoredValue(ROUTING_KEY_STORAGE);
+    el.textContent = key ? 'ORS設定済み' : '未設定（OSRM使用）';
   }
 
   function ensureRecordUpdatedAt(record, fallbackTime) {
@@ -1725,6 +1767,7 @@
     document.getElementById('cancel-edit-btn').addEventListener('click', cancelEdit);
     document.getElementById('search').addEventListener('input', renderList);
     document.getElementById('btn-save-sync').addEventListener('click', saveSyncSettings);
+    document.getElementById('btn-save-routing').addEventListener('click', saveRoutingSettings);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('btn-export-records').addEventListener('click', exportRecords);
     document.getElementById('btn-import-records').addEventListener('click', () => {
@@ -1835,6 +1878,7 @@
   // 初期化
   setDefaultDates();
   initSyncControls();
+  initRoutingControls();
   bindEvents();
   switchTab('add');
 </script>
