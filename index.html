@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-OgZ2OtT0ixFcxIdz2Lt22wQ0HXgRjHHR+r5AilyO9HE=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-wawEuqCIsPnUU194WoKD9d33/F6lJRcLH9wyYV4OjG0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -1553,7 +1553,16 @@
 
   async function getCachedCoord(place, cache, hint = null) {
     if (!cache.has(place)) {
-      cache.set(place, await geocode(place, hint));
+      try {
+        cache.set(place, await geocode(place, hint));
+      } catch (e) {
+        // ジオコーディング失敗時はヒント座標またはnullで続行（計算は推定になる）
+        if (hint) {
+          cache.set(place, hint);
+        } else {
+          throw e; // ヒントもなければ諦める
+        }
+      }
     }
     return cache.get(place);
   }
@@ -1617,13 +1626,13 @@
     return deg * Math.PI / 180;
   }
 
-  async function calcDistance() {
+  async function calcDistance(silent = false) {
     const dateFrom = document.getElementById('f-date-from').value;
     const dateTo   = document.getElementById('f-date-to').value;
     const from = document.getElementById('f-from').value.trim();
     const to   = document.getElementById('f-to').value.trim();
     const segments = getRouteSegments(from, getStops(), to, dateTo);
-    if (segments.length < 1) { showToast('2箇所以上の場所を入力してください'); return; }
+    if (segments.length < 1) { if (!silent) showToast('2箇所以上の場所を入力してください'); return; }
 
     const btn = document.getElementById('btn-calc');
     btn.textContent = '計算中…';
@@ -1669,7 +1678,11 @@
         : (hasEstimatedDriving ? '（一部推定）' : '');
       showToast(`🛣️ 走行距離：約 ${km} km${detail}`);
     } catch (e) {
-      showError(e.message);
+      if (silent) {
+        showToast('⚠️ 距離計算できませんでした（ネットワークを確認してください）');
+      } else {
+        showError(e.message);
+      }
     } finally {
       btn.textContent = '🔄 自動計算';
       btn.disabled = false;
@@ -1685,7 +1698,7 @@
     const btn = document.getElementById('btn-calc');
     if (btn && btn.disabled) return; // 計算中は重複実行しない
     clearTimeout(_autoCalcTimer);
-    _autoCalcTimer = setTimeout(() => calcDistance(), 2000);
+    _autoCalcTimer = setTimeout(() => calcDistance(true), 2000);
   }
 
   // 燃費の自動表示（バイク距離 / 給油量）
