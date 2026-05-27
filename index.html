@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-OgZ2OtT0ixFcxIdz2Lt22wQ0HXgRjHHR+r5AilyO9HE=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-ZOox4aRTJOAbW3vOzWldTgMo/f+crSrukU5zuAj7Grc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -241,7 +241,7 @@
     .daily-distance-list { display: flex; flex-direction: column; gap: 8px; }
     .daily-distance-row {
       display: grid;
-      grid-template-columns: 1.2fr auto 1fr;
+      grid-template-columns: 1.2fr 1fr;
       gap: 8px;
       align-items: center;
       background: #0f3460;
@@ -251,16 +251,6 @@
     }
     .daily-distance-date { color: #ccc; font-size: 0.86rem; }
     .daily-distance-row input { width: 100%; }
-    .daily-weather-select {
-      font-size: 1.1rem;
-      background: #162040;
-      border: 1px solid #2a4a7f;
-      border-radius: 6px;
-      color: #fff;
-      padding: 4px 6px;
-      cursor: pointer;
-      width: auto;
-    }
     .daily-distance-summary {
       color: #aaa;
       font-size: 0.82rem;
@@ -805,9 +795,18 @@
         </div>
       </div>
       <div class="form-group">
-        <label>📅 日毎のバイク距離・天気</label>
+        <label>📅 日毎のバイク距離（km）</label>
         <div class="daily-distance-list" id="daily-distance-list"></div>
         <div class="daily-distance-summary" id="daily-distance-summary">日付を選ぶと日毎の入力欄が出ます</div>
+      </div>
+      <div class="form-group">
+        <label>🌤️ 天気</label>
+        <select id="f-weather">
+          <option value="☀️ 晴れ">☀️ 晴れ</option>
+          <option value="⛅ 曇り">⛅ 曇り</option>
+          <option value="🌧️ 雨">🌧️ 雨</option>
+          <option value="❄️ 雪">❄️ 雪</option>
+        </select>
       </div>
 
       <div class="row2">
@@ -1015,7 +1014,6 @@
   function removeStop(idx) {
     const card = document.querySelector(`.stop-card[data-id="${idx}"]`);
     if (card) card.remove();
-    scheduleAutoCalc();
   }
 
   function getStops() {
@@ -1195,19 +1193,7 @@
     return dates.length > 1 ? distributeKmAcrossDates(fallbackBikeKm, dates) : [];
   }
 
-  const WEATHER_OPTIONS = [
-    { value: '',    label: '－' },
-    { value: '☀️',  label: '☀️ 晴れ' },
-    { value: '🌤️', label: '🌤️ 晴れ時々曇り' },
-    { value: '☁️',  label: '☁️ 曇り' },
-    { value: '🌧️', label: '🌧️ 雨' },
-    { value: '⛈️', label: '⛈️ 雷雨' },
-    { value: '🌨️', label: '🌨️ 雪' },
-  ];
-  const WEATHER_OPTIONS_HTML = WEATHER_OPTIONS
-    .map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-
-  function renderDailyDistanceRows(dailyDistances = [], dailyWeather = []) {
+  function renderDailyDistanceRows(dailyDistances = []) {
     const list = document.getElementById('daily-distance-list');
     const summary = document.getElementById('daily-distance-summary');
     if (!list || !summary) return;
@@ -1216,7 +1202,6 @@
       document.getElementById('f-date-to').value
     );
     const byDate = new Map((dailyDistances || []).map(d => [d.date, d.bikeKm]));
-    const byWeather = new Map((dailyWeather || []).map(d => [d.date, d.weather]));
     list.innerHTML = '';
     if (!dates.length) {
       summary.textContent = '日付を選ぶと日毎の入力欄が出ます';
@@ -1228,13 +1213,10 @@
       row.dataset.date = date;
       row.innerHTML = `
         <div class="daily-distance-date">${escape(formatDate(date))}</div>
-        <select class="daily-weather-select">${WEATHER_OPTIONS_HTML}</select>
         <input type="number" class="daily-distance-km" placeholder="バイクkm" min="0" step="0.1" />
       `;
       const input = row.querySelector('.daily-distance-km');
-      const weatherSel = row.querySelector('.daily-weather-select');
       if (byDate.has(date)) input.value = byDate.get(date);
-      if (byWeather.has(date)) weatherSel.value = byWeather.get(date);
       input.addEventListener('input', updateDistanceFromDaily);
       list.appendChild(row);
     });
@@ -1246,15 +1228,6 @@
       .map(row => {
         const bikeKm = normalizeDistanceKm(row.querySelector('.daily-distance-km')?.value);
         return bikeKm ? { date: row.dataset.date, bikeKm } : null;
-      })
-      .filter(Boolean);
-  }
-
-  function getDailyWeather() {
-    return Array.from(document.querySelectorAll('#daily-distance-list .daily-distance-row'))
-      .map(row => {
-        const weather = row.querySelector('.daily-weather-select')?.value || '';
-        return weather ? { date: row.dataset.date, weather } : null;
       })
       .filter(Boolean);
   }
@@ -1676,18 +1649,6 @@
     }
   }
 
-  // ルート入力時の自動計算スケジューラー（2秒デバウンス）
-  let _autoCalcTimer = null;
-  function scheduleAutoCalc() {
-    const from = document.getElementById('f-from').value.trim();
-    const to   = document.getElementById('f-to').value.trim();
-    if (!from || !to) return; // 出発地・目的地が両方ないと計算できない
-    const btn = document.getElementById('btn-calc');
-    if (btn && btn.disabled) return; // 計算中は重複実行しない
-    clearTimeout(_autoCalcTimer);
-    _autoCalcTimer = setTimeout(() => calcDistance(), 2000);
-  }
-
   // 燃費の自動表示（バイク距離 / 給油量）
   function updateFuelEff() {
     const bikeKm = getBikeKm();
@@ -1787,7 +1748,7 @@
     const distances = getDistances();
     const fuel     = document.getElementById('f-fuel').value;
     const fuelCost = document.getElementById('f-fuel-cost').value;
-    const weather  = '';
+    const weather  = document.getElementById('f-weather').value;
     const memo     = document.getElementById('f-memo').value.trim();
 
     if (!dateFrom || !to) {
@@ -1813,8 +1774,7 @@
       km:       bikeKm > 0 ? Math.round(bikeKm) : null,
       fuel:     fuel     ? parseFloat(fuel)     : null,
       fuelCost: fuelCost ? parseInt(fuelCost)   : null,
-      dailyWeather: getDailyWeather(),
-      weather: getDailyWeather().map(d => d.weather).filter(Boolean)[0] || weather,
+      weather,
       rating,
       memo,
       photos: [...photoData],
@@ -2199,6 +2159,7 @@
     renderCalcBasis(Array.isArray(r.calcBasis) ? r.calcBasis : []);
     document.getElementById('f-fuel').value = r.fuel || '';
     document.getElementById('f-fuel-cost').value = r.fuelCost || '';
+    document.getElementById('f-weather').value = r.weather || '☀️ 晴れ';
     document.getElementById('f-memo').value = r.memo || '';
 
     document.getElementById('stop-list').innerHTML = '';
@@ -2212,7 +2173,7 @@
       r.dateFrom || r.date || '',
       r.dateTo || r.dateFrom || r.date || '',
       distanceSumByKind(distances, DISTANCE_KIND_BIKE)
-    ), r.dailyWeather || []);
+    ));
     updateFuelEff();
     document.getElementById('save-btn').textContent = '💾 変更を保存する';
     document.getElementById('cancel-edit-btn').style.display = 'block';
@@ -2294,7 +2255,7 @@
           ${fuel     ? `<span>⛽ ${fuel} L</span>` : ''}
           ${fuelCost ? `<span>💴 ${fuelCost.toLocaleString()} 円</span>` : ''}
           ${bikeKm && fuel ? `<span>⚡ ${(bikeKm / fuel).toFixed(1)} km/L</span>` : ''}
-          ${(!r.dailyWeather?.length && r.weather) ? `<span>${escape(r.weather)}</span>` : ''}
+          <span>${escape(r.weather || '')}</span>
         </div>
         ${safeRating ? `<div class="record-stars">${'★'.repeat(safeRating)}${'☆'.repeat(5 - safeRating)}</div>` : ''}
         ${r.memo   ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
@@ -2371,13 +2332,9 @@
   function renderDailyDistances(r, bikeKm) {
     const daily = getRecordDailyDistances(r, bikeKm);
     if (!daily.length) return '';
-    const weatherByDate = new Map((r.dailyWeather || []).map(d => [d.date, d.weather]));
     return `
       <div class="daily-distance-display">
-        ${daily.map(d => {
-          const w = weatherByDate.get(d.date) || '';
-          return `<span class="daily-distance-pill">${w ? escape(w) + ' ' : '🏍️ '}${escape(formatShortDate(d.date))} ${Math.round(d.bikeKm).toLocaleString()} km</span>`;
-        }).join('')}
+        ${daily.map(d => `<span class="daily-distance-pill">🏍️ ${escape(formatShortDate(d.date))} ${Math.round(d.bikeKm).toLocaleString()} km</span>`).join('')}
       </div>`;
   }
 
@@ -2444,11 +2401,6 @@
     document.getElementById('f-date-to').addEventListener('input', updateDays);
     document.getElementById('f-fuel').addEventListener('input', updateFuelEff);
     document.getElementById('btn-calc').addEventListener('click', calcDistance);
-    // ルート入力時の自動計算トリガー
-    document.getElementById('f-from').addEventListener('input', scheduleAutoCalc);
-    document.getElementById('f-to').addEventListener('input', scheduleAutoCalc);
-    document.getElementById('f-date-from').addEventListener('input', scheduleAutoCalc);
-    document.getElementById('f-date-to').addEventListener('input', scheduleAutoCalc);
     document.getElementById('btn-add-distance').addEventListener('click', () => addDistanceRow('', ''));
     document.getElementById('btn-gmap-route').addEventListener('click', openGMapRoute);
     document.getElementById('save-btn').addEventListener('click', saveRecord);
@@ -2502,11 +2454,7 @@
       if (star) setStopRating(star);
     });
     document.getElementById('stop-list').addEventListener('change', e => {
-      if (e.target.classList.contains('stop-type')) { updateStopType(e.target); scheduleAutoCalc(); }
-      if (e.target.classList.contains('stop-date')) scheduleAutoCalc();
-    });
-    document.getElementById('stop-list').addEventListener('input', e => {
-      if (e.target.classList.contains('stop-name')) scheduleAutoCalc();
+      if (e.target.classList.contains('stop-type')) updateStopType(e.target);
     });
 
     document.getElementById('record-list').addEventListener('click', e => {
