@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-utxuxZAmq0gAehh4BMftu/e62b7qv9bT2j0n647kkGI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-G/JsmCtGSw6brEryQNCOEg600aD7MritaQMUZy5qhyU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -808,6 +808,7 @@
         <label>📅 日毎のバイク距離・天気</label>
         <div class="daily-distance-list" id="daily-distance-list"></div>
         <div class="daily-distance-summary" id="daily-distance-summary">日付を選ぶと日毎の入力欄が出ます</div>
+        <button type="button" class="btn-calc" id="btn-fetch-weather" style="margin-top:8px;width:100%">🌤️ 天気を自動取得</button>
       </div>
 
       <div class="row2">
@@ -1247,6 +1248,64 @@
         return weather ? { date: row.dataset.date, weather } : null;
       })
       .filter(Boolean);
+  }
+
+  function wmoToWeatherEmoji(code) {
+    if (code <= 1) return '☀️';
+    if (code === 2) return '🌤️';
+    if (code === 3 || code === 45 || code === 48) return '☁️';
+    if ([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return '🌧️';
+    if ([71,73,75,77,85,86].includes(code)) return '🌨️';
+    if ([95,96,99].includes(code)) return '⛈️';
+    return '☀️';
+  }
+
+  async function autoFetchWeather() {
+    const dateFrom = document.getElementById('f-date-from').value;
+    const dateTo   = document.getElementById('f-date-to').value;
+    const from     = document.getElementById('f-from').value.trim();
+    if (!dateFrom || !from) { showToast('出発地と出発日を入力してください'); return; }
+
+    const dates = getDateList(dateFrom, dateTo);
+    if (!dates.length) { showToast('日付範囲を設定してください'); return; }
+
+    // 日付→立ち寄り地のマッピングを構築
+    const stops = getStops();
+    const datePlace = new Map();
+    stops.forEach(s => {
+      if (s.date && s.name && s.type !== 'ferry' && !datePlace.has(s.date)) {
+        datePlace.set(s.date, s.name);
+      }
+    });
+
+    const btn = document.getElementById('btn-fetch-weather');
+    btn.disabled = true;
+    btn.textContent = '取得中…';
+    showToast('🌤️ 天気を取得中…');
+
+    const coordCache = new Map();
+    let ok = 0;
+    for (const date of dates) {
+      const place = datePlace.get(date) || from;
+      try {
+        let coord = coordCache.get(place);
+        if (!coord) { coord = await geocode(place); coordCache.set(place, coord); }
+        const res = await fetch(
+          `https://archive-api.open-meteo.com/v1/archive?latitude=${coord.lat}&longitude=${coord.lon}&start_date=${date}&end_date=${date}&daily=weather_code&timezone=Asia%2FTokyo`
+        );
+        if (!res.ok) continue;
+        const data = await res.json();
+        const code = data?.daily?.weather_code?.[0];
+        if (code == null) continue;
+        const emoji = wmoToWeatherEmoji(code);
+        const sel = document.querySelector(`#daily-distance-list .daily-distance-row[data-date="${date}"] .daily-weather-select`);
+        if (sel) { sel.value = emoji; ok++; }
+      } catch (_) { /* skip */ }
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🌤️ 天気を自動取得';
+    showToast(ok > 0 ? `✅ ${ok}日分の天気を取得しました` : '⚠️ 取得できませんでした（日付が新しすぎる or ネットワークエラー）');
   }
 
   function getDailyDistances() {
@@ -2431,6 +2490,7 @@
     document.getElementById('f-date-to').addEventListener('input', updateDays);
     document.getElementById('f-fuel').addEventListener('input', updateFuelEff);
     document.getElementById('btn-calc').addEventListener('click', calcDistance);
+    document.getElementById('btn-fetch-weather').addEventListener('click', autoFetchWeather);
     document.getElementById('btn-add-distance').addEventListener('click', () => addDistanceRow('', ''));
     document.getElementById('btn-gmap-route').addEventListener('click', openGMapRoute);
     document.getElementById('save-btn').addEventListener('click', saveRecord);
