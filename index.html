@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Sz4ZqdmQCfQO66hbzDbwrINOc1oReOfmVAf5xZIyJ7s=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-UOQXvswGCp17+nY+/1S4DwuLOiqexyP7fWcQR2e+mY8=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -946,6 +946,7 @@
   const SYNC_API_STORAGE = 'touring_sync_api_url';
   const SYNC_DELETED_STORAGE = 'touring_deleted_records';
   const ROUTING_KEY_STORAGE = 'touring_routing_key';
+  const GEOCODE_CACHE_STORAGE = 'touring_geocode_cache';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -1551,16 +1552,37 @@
     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
   }
 
+  function getLsGeocode(place) {
+    try {
+      const obj = JSON.parse(localStorage.getItem(GEOCODE_CACHE_STORAGE) || '{}');
+      return obj[place] || null;
+    } catch { return null; }
+  }
+  function setLsGeocode(place, coord) {
+    try {
+      const obj = JSON.parse(localStorage.getItem(GEOCODE_CACHE_STORAGE) || '{}');
+      obj[place] = coord;
+      localStorage.setItem(GEOCODE_CACHE_STORAGE, JSON.stringify(obj));
+    } catch {}
+  }
+
   async function getCachedCoord(place, cache, hint = null) {
     if (!cache.has(place)) {
-      try {
-        cache.set(place, await geocode(place, hint));
-      } catch (e) {
-        // ジオコーディング失敗時はヒント座標またはnullで続行（計算は推定になる）
-        if (hint) {
-          cache.set(place, hint);
-        } else {
-          throw e; // ヒントもなければ諦める
+      // localStorageの永続キャッシュを先に確認（APIコール不要）
+      const stored = getLsGeocode(place);
+      if (stored) {
+        cache.set(place, stored);
+      } else {
+        try {
+          const coord = await geocode(place, hint);
+          cache.set(place, coord);
+          setLsGeocode(place, coord); // 次回のために保存
+        } catch (e) {
+          if (hint) {
+            cache.set(place, hint);
+          } else {
+            throw e;
+          }
         }
       }
     }
@@ -1678,9 +1700,7 @@
         : (hasEstimatedDriving ? '（一部推定）' : '');
       showToast(`🛣️ 走行距離：約 ${km} km${detail}`);
     } catch (e) {
-      if (!silent) {
-        showError(e.message);
-      }
+      if (!silent) showToast('⚠️ 距離計算に失敗しました');
     } finally {
       btn.textContent = '🔄 自動計算';
       btn.disabled = false;
