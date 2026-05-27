@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-ZOox4aRTJOAbW3vOzWldTgMo/f+crSrukU5zuAj7Grc=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-E4uUFY4VRBTEGdidn+3rgiGTo8DrauMUqoj66+liJKU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -1014,6 +1014,7 @@
   function removeStop(idx) {
     const card = document.querySelector(`.stop-card[data-id="${idx}"]`);
     if (card) card.remove();
+    scheduleAutoCalc();
   }
 
   function getStops() {
@@ -1647,6 +1648,18 @@
       btn.textContent = '🔄 自動計算';
       btn.disabled = false;
     }
+  }
+
+  // ルート入力時の自動計算スケジューラー（2秒デバウンス）
+  let _autoCalcTimer = null;
+  function scheduleAutoCalc() {
+    const from = document.getElementById('f-from').value.trim();
+    const to   = document.getElementById('f-to').value.trim();
+    if (!from || !to) return; // 出発地・目的地が両方ないと計算できない
+    const btn = document.getElementById('btn-calc');
+    if (btn && btn.disabled) return; // 計算中は重複実行しない
+    clearTimeout(_autoCalcTimer);
+    _autoCalcTimer = setTimeout(() => calcDistance(), 2000);
   }
 
   // 燃費の自動表示（バイク距離 / 給油量）
@@ -2401,6 +2414,11 @@
     document.getElementById('f-date-to').addEventListener('input', updateDays);
     document.getElementById('f-fuel').addEventListener('input', updateFuelEff);
     document.getElementById('btn-calc').addEventListener('click', calcDistance);
+    // ルート入力時の自動計算トリガー
+    document.getElementById('f-from').addEventListener('input', scheduleAutoCalc);
+    document.getElementById('f-to').addEventListener('input', scheduleAutoCalc);
+    document.getElementById('f-date-from').addEventListener('input', scheduleAutoCalc);
+    document.getElementById('f-date-to').addEventListener('input', scheduleAutoCalc);
     document.getElementById('btn-add-distance').addEventListener('click', () => addDistanceRow('', ''));
     document.getElementById('btn-gmap-route').addEventListener('click', openGMapRoute);
     document.getElementById('save-btn').addEventListener('click', saveRecord);
@@ -2454,7 +2472,11 @@
       if (star) setStopRating(star);
     });
     document.getElementById('stop-list').addEventListener('change', e => {
-      if (e.target.classList.contains('stop-type')) updateStopType(e.target);
+      if (e.target.classList.contains('stop-type')) { updateStopType(e.target); scheduleAutoCalc(); }
+      if (e.target.classList.contains('stop-date')) scheduleAutoCalc();
+    });
+    document.getElementById('stop-list').addEventListener('input', e => {
+      if (e.target.classList.contains('stop-name')) scheduleAutoCalc();
     });
 
     document.getElementById('record-list').addEventListener('click', e => {
