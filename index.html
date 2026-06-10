@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-G/JsmCtGSw6brEryQNCOEg600aD7MritaQMUZy5qhyU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-7fRyqQZcuBMJ0d0PWtM5A6xAuwQ2eANT+PWGt547eWE=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <style>
@@ -391,6 +391,19 @@
     .route-flow .map-link { cursor: pointer; text-decoration: underline; }
     .route-flow .arrow { color: #e94560; font-size: 0.75rem; }
     .route-flow .ferry-arrow { color: #83d4cf; }
+
+    /* 日別グルーピング（一覧） */
+    .day-group { margin-bottom: 12px; }
+    .day-group .route-flow { margin-bottom: 6px; }
+    .day-header {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #f5a623;
+      margin-bottom: 5px;
+      padding-bottom: 3px;
+      border-bottom: 1px dashed rgba(245, 166, 35, 0.35);
+    }
+    .day-header .day-header-meta { color: #aaa; font-weight: normal; margin-left: 8px; }
 
     /* 星評価 */
     .stars { display: flex; gap: 6px; margin-top: 4px; }
@@ -2328,11 +2341,7 @@
           <div class="record-title">${r.title ? escape(r.title) : `📍 ${escape(r.to)}`}</div>
           <div class="record-date">${escape(formatDateRange(r))}</div>
         </div>
-        <div class="route-flow">
-          ${renderRouteFlow(r)}
-        </div>
-        ${renderStopNotes(r)}
-        ${renderDailyDistances(r, bikeKm)}
+        ${renderRecordRoute(r, bikeKm)}
         <div class="record-meta">
           ${bikeKm  ? `<span>🏍️ ${Math.round(bikeKm).toLocaleString()} km</span>` : ''}
           ${ferryKm ? `<span>⛴️ ${Math.round(ferryKm).toLocaleString()} km</span>` : ''}
@@ -2361,23 +2370,116 @@
     return `<span class="${className} map-link" data-map-place="${escapeAttr(place)}">${escape(label)}</span>`;
   }
 
+  function stopRouteSegment(s, withDate = true) {
+    if (s.type === 'ferry') {
+      const ferry = [];
+      if (s.name) ferry.push(routeLink(s.name, withDate ? stopRouteLabel('⛴️', s.name, s.date) : `⛴️ ${s.name}`, 'place ferry-place'));
+      if (s.name && s.toName) ferry.push('<span class="arrow ferry-arrow">⇢</span>');
+      if (s.toName) ferry.push(routeLink(s.toName, `⚓ ${s.toName}`, 'place ferry-place'));
+      return ferry.length ? `<span>${ferry.join('')}</span>` : '';
+    }
+    if (s.name) {
+      const icon = s.vehicle === 'ferry' ? '⛴️' : '🏍️';
+      return routeLink(s.name, withDate ? stopRouteLabel(icon, s.name, s.date) : `${icon} ${s.name}`);
+    }
+    return '';
+  }
+
   function renderRouteFlow(r) {
     const segments = [];
     if (r.from) segments.push(routeLink(r.from, `🗺️ ${r.from}`));
     normalizeStops(r.stops).forEach(s => {
-      if (s.type === 'ferry') {
-        const ferry = [];
-        if (s.name) ferry.push(routeLink(s.name, stopRouteLabel('⛴️', s.name, s.date), 'place ferry-place'));
-        if (s.name && s.toName) ferry.push('<span class="arrow ferry-arrow">⇢</span>');
-        if (s.toName) ferry.push(routeLink(s.toName, `⚓ ${s.toName}`, 'place ferry-place'));
-        if (ferry.length) segments.push(`<span>${ferry.join('')}</span>`);
-      } else if (s.name) {
-        const icon = s.vehicle === 'ferry' ? '⛴️' : '🏍️';
-        segments.push(routeLink(s.name, stopRouteLabel(icon, s.name, s.date)));
-      }
+      const seg = stopRouteSegment(s, true);
+      if (seg) segments.push(seg);
     });
     if (r.to) segments.push(routeLink(r.to, `📍 ${r.to}`));
     return segments.join('<span class="arrow">▶</span>');
+  }
+
+  // 立ち寄り地に日付がある記録は日別グルーピング、ない記録は従来表示
+  function renderRecordRoute(r, bikeKm) {
+    const dayGroups = renderDayGroups(r, bikeKm);
+    if (dayGroups !== null) return dayGroups;
+    return `
+        <div class="route-flow">
+          ${renderRouteFlow(r)}
+        </div>
+        ${renderStopNotes(r)}
+        ${renderDailyDistances(r, bikeKm)}`;
+  }
+
+  function renderDayGroups(r, bikeKm) {
+    const stops = normalizeStops(r.stops);
+    if (!r.dateFrom || !stops.some(s => s.date)) return null;
+    const daily = getRecordDailyDistances(r, bikeKm);
+    const kmByDate = new Map(daily.map(d => [d.date, Number(d.bikeKm || 0)]));
+    const weatherByDate = new Map((r.dailyWeather || []).map(d => [d.date, d.weather]));
+
+    const groups = new Map();
+    const ensure = date => {
+      if (!groups.has(date)) groups.set(date, { date, stops: [] });
+      return groups.get(date);
+    };
+    ensure(r.dateFrom);
+    let currentDate = r.dateFrom;
+    stops.forEach(s => {
+      if (s.date) currentDate = s.date;
+      ensure(currentDate).stops.push(s);
+    });
+    kmByDate.forEach((km, date) => { if (km > 0) ensure(date); });
+    weatherByDate.forEach((w, date) => { if (w) ensure(date); });
+    if (r.dateTo && r.dateTo >= r.dateFrom) ensure(r.dateTo);
+
+    const ordered = Array.from(groups.values()).sort((a, b) => a.date.localeCompare(b.date));
+    const lastIdx = ordered.length - 1;
+    return ordered.map((g, i) => {
+      const segments = [];
+      if (i === 0 && r.from) segments.push(routeLink(r.from, `🗺️ ${r.from}`));
+      g.stops.forEach(s => {
+        const seg = stopRouteSegment(s, false);
+        if (seg) segments.push(seg);
+      });
+      if (i === lastIdx && r.to) segments.push(routeLink(r.to, `📍 ${r.to}`));
+      const metaParts = [];
+      const w = weatherByDate.get(g.date);
+      const km = kmByDate.get(g.date) || 0;
+      if (w) metaParts.push(escape(w));
+      if (km > 0) metaParts.push(`🏍️ ${Math.round(km).toLocaleString()} km`);
+      const notes = g.stops.filter(s => s.memo || clampInt(s.rating, 0, 5) > 0);
+      return `
+      <div class="day-group">
+        <div class="day-header">📅 ${escape(formatShortDate(g.date) || g.date)}${metaParts.length ? `<span class="day-header-meta">${metaParts.join('　')}</span>` : ''}</div>
+        ${segments.length ? `<div class="route-flow">${segments.join('<span class="arrow">▶</span>')}</div>` : ''}
+        ${notes.map(s => stopNoteCard(s, false)).join('')}
+      </div>`;
+    }).join('');
+  }
+
+  function stopNoteCard(s, showDate = true) {
+    let title, color;
+    const safeRating = clampInt(s.rating, 0, 5);
+    if (s.type === 'ferry') {
+      title = `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`;
+      color = '#83d4cf';
+    } else if (s.vehicle === 'ferry') {
+      title = `⛴️ ${s.name}`;
+      color = '#83d4cf';
+    } else {
+      title = `🏍️ ${s.name}`;
+      color = '#e94560';
+    }
+    const dateLine = showDate && s.date
+      ? `<div style="font-size:0.78rem;color:#aaa;margin-bottom:3px;">📅 ${escape(formatDate(s.date))}</div>`
+      : '';
+    const memoLine = s.memo
+      ? `<div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>`
+      : '';
+    return `
+            <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
+              <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${safeRating ? `　<span style="color:#f5a623;">${'★'.repeat(safeRating)}${'☆'.repeat(5-safeRating)}</span>` : ''}</div>
+              ${dateLine}
+              ${memoLine}
+            </div>`;
   }
 
   function renderStopNotes(r) {
@@ -2385,32 +2487,7 @@
     if (!notes.length) return '';
     return `
       <div style="margin-bottom:10px;">
-        ${notes.map(s => {
-          let title, color;
-          const safeRating = clampInt(s.rating, 0, 5);
-          if (s.type === 'ferry') {
-            title = `⛴️ ${s.name || '乗船港未入力'}${s.toName ? ` ⇢ ${s.toName}` : ''}`;
-            color = '#83d4cf';
-          } else if (s.vehicle === 'ferry') {
-            title = `⛴️ ${s.name}`;
-            color = '#83d4cf';
-          } else {
-            title = `🏍️ ${s.name}`;
-            color = '#e94560';
-          }
-          const dateLine = s.date
-            ? `<div style="font-size:0.78rem;color:#aaa;margin-bottom:3px;">📅 ${escape(formatDate(s.date))}</div>`
-            : '';
-          const memoLine = s.memo
-            ? `<div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>`
-            : '';
-          return `
-            <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
-              <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${safeRating ? `　<span style="color:#f5a623;">${'★'.repeat(safeRating)}${'☆'.repeat(5-safeRating)}</span>` : ''}</div>
-              ${dateLine}
-              ${memoLine}
-            </div>`;
-        }).join('')}
+        ${notes.map(s => stopNoteCard(s, true)).join('')}
       </div>`;
   }
 
