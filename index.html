@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-hyVg0BGKemU3sYHaWdDPaKUDvdumEZhOGyI9GKsKdyk=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-SKn42U1QxteatTRHLBYidgfdVfNKzb+DkPL0nk3Oh4w=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1015,6 +1015,7 @@
   const SYNC_DELETED_MAINT_STORAGE = 'touring_deleted_maintenance';
   const ROUTING_KEY_STORAGE = 'touring_routing_key';
   const MAINT_STORAGE = 'touring_maintenance';
+  const MAINT_SYNC_RECORD_PREFIX = 'maintenance:';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -2162,6 +2163,70 @@
     return safe;
   }
 
+  function maintenanceSyncRecordId(id) {
+    return `${MAINT_SYNC_RECORD_PREFIX}${id}`;
+  }
+
+  function isMaintenanceSyncRecordId(id) {
+    return String(id || '').startsWith(MAINT_SYNC_RECORD_PREFIX);
+  }
+
+  function stripMaintenanceSyncRecordId(id) {
+    const value = String(id || '');
+    return isMaintenanceSyncRecordId(value) ? value.slice(MAINT_SYNC_RECORD_PREFIX.length) : value;
+  }
+
+  function isMaintenanceSyncRecord(record) {
+    return record && (record.syncType === 'maintenance' || isMaintenanceSyncRecordId(record.id));
+  }
+
+  function prepareMaintenanceRecordForCloud(item) {
+    return {
+      ...item,
+      id: maintenanceSyncRecordId(item.id),
+      syncType: 'maintenance',
+      photos: [],
+      photoCount: 0
+    };
+  }
+
+  function maintenanceFromSyncRecord(record) {
+    const { syncType, photos, photoCount, ...item } = record || {};
+    return {
+      ...item,
+      id: stripMaintenanceSyncRecordId(item.id)
+    };
+  }
+
+  function splitMaintenanceSyncRecords(records) {
+    const normalRecords = [];
+    const maintenance = [];
+    (records || []).forEach(record => {
+      if (isMaintenanceSyncRecord(record)) {
+        maintenance.push(maintenanceFromSyncRecord(record));
+      } else {
+        normalRecords.push(record);
+      }
+    });
+    return { records: normalRecords, maintenance };
+  }
+
+  function splitMaintenanceSyncDeletes(deletedRecords) {
+    const normalDeleted = [];
+    const deletedMaintenance = [];
+    (deletedRecords || []).forEach(item => {
+      const id = String(item?.id || item?.recordId || '');
+      if (!id) return;
+      const deletedAt = item.deletedAt || item.deleted_at;
+      if (isMaintenanceSyncRecordId(id)) {
+        deletedMaintenance.push({ id: stripMaintenanceSyncRecordId(id), deletedAt });
+      } else {
+        normalDeleted.push(item);
+      }
+    });
+    return { records: normalDeleted, maintenance: deletedMaintenance };
+  }
+
   function isLegacyRecord(record) {
     return record && !Array.isArray(record.distances);
   }
@@ -2338,26 +2403,40 @@
       const deletedMaintMap = getDeletedMaintenanceMap();
       const deletedRecords = Object.entries(deletedMap).map(([id, deletedAt]) => ({ id, deletedAt }));
       const deletedMaintenance = Object.entries(deletedMaintMap).map(([id, deletedAt]) => ({ id, deletedAt }));
+      const maintenanceRecords = localMaintenance.map(prepareMaintenanceRecordForCloud);
+      const syncDeletedRecords = [
+        ...deletedRecords,
+        ...deletedMaintenance.map(({ id, deletedAt }) => ({ id: maintenanceSyncRecordId(id), deletedAt }))
+      ];
       const res = await fetch(`${apiUrl}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           syncKey,
-          records: localRecords.map(prepareRecordForCloud),
-          deletedRecords,
+          records: [...localRecords.map(prepareRecordForCloud), ...maintenanceRecords],
+          deletedRecords: syncDeletedRecords,
           maintenance: localMaintenance,
           deletedMaintenance
         })
       });
       if (!res.ok) throw new Error(`同期APIエラー ${res.status}`);
       const data = await res.json();
-      const remoteRecords = Array.isArray(data.records) ? data.records : [];
+      const remotePayloadRecords = Array.isArray(data.records) ? data.records : [];
       const remoteDeleted = Array.isArray(data.deletedRecords) ? data.deletedRecords : [];
-      const remoteMaintenance = Array.isArray(data.maintenance) ? data.maintenance : [];
+      const splitRemote = splitMaintenanceSyncRecords(remotePayloadRecords);
+      const splitRemoteDeleted = splitMaintenanceSyncDeletes(remoteDeleted);
+      const remoteRecords = splitRemote.records;
+      const remoteMaintenance = [
+        ...(Array.isArray(data.maintenance) ? data.maintenance : []),
+        ...splitRemote.maintenance
+      ];
       const remoteDeletedMaintenance = Array.isArray(data.deletedMaintenance) ? data.deletedMaintenance : [];
-      const mergedDeleted = mergeDeletedRecords(deletedMap, remoteDeleted);
+      const mergedDeleted = mergeDeletedRecords(deletedMap, splitRemoteDeleted.records);
       const mergedRecords = mergeSyncedRecords(localRecords, remoteRecords, mergedDeleted);
-      const mergedDeletedMaint = mergeDeletedMaintenance(deletedMaintMap, remoteDeletedMaintenance);
+      const mergedDeletedMaint = mergeDeletedMaintenance(
+        deletedMaintMap,
+        [...remoteDeletedMaintenance, ...splitRemoteDeleted.maintenance]
+      );
       const mergedMaintenance = mergeSyncedMaintenance(localMaintenance, remoteMaintenance, mergedDeletedMaint);
       saveDeletedRecordMap(mergedDeleted);
       saveDeletedMaintenanceMap(mergedDeletedMaint);
