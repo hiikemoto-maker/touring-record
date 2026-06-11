@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-hVpLc8f93D5c2lzAORzAWPxXyfZ/p6a/tM9G9qrHQ5Y=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-tN5FtqLm/ob7RZ3iuvpSKjNPq5Im5JDlmUjm5Mfo3mo=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1839,10 +1839,15 @@
     }
   }
 
-  // 今日の日付をデフォルトに
+  // 今日の日付をデフォルトに（valueAsDateはUTC解釈で朝9時前に前日になるためローカル日付文字列で設定する）
+  function todayLocalDate() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function setDefaultDates() {
-    document.getElementById('f-date-from').valueAsDate = new Date();
-    document.getElementById('f-date-to').valueAsDate   = new Date();
+    document.getElementById('f-date-from').value = todayLocalDate();
+    document.getElementById('f-date-to').value   = todayLocalDate();
   }
 
   // 写真プレビュー（HEIC/HEIF自動変換対応）
@@ -1962,8 +1967,8 @@
 
   function resetForm() {
     document.getElementById('f-title').value     = '';
-    document.getElementById('f-date-from').valueAsDate = new Date();
-    document.getElementById('f-date-to').valueAsDate   = new Date();
+    document.getElementById('f-date-from').value = todayLocalDate();
+    document.getElementById('f-date-to').value   = todayLocalDate();
     document.getElementById('days-bar').style.display  = 'none';
     document.getElementById('f-from').value = '';
     document.getElementById('f-to').value   = '';
@@ -2982,7 +2987,7 @@
   function resetMaintenanceForm() {
     editingMaintenanceId = null;
     setMaintenanceTypeInput('オイル交換');
-    document.getElementById('m-date').valueAsDate = new Date();
+    document.getElementById('m-date').value = todayLocalDate();
     document.getElementById('m-cost').value = '';
     document.getElementById('m-odo').value = '';
     document.getElementById('m-memo').value = '';
@@ -3024,34 +3029,29 @@
     if (!odo) return null;
     return {
       odo,
-      totalKmAtTime: nonNegativeNumber(item?.totalKmAtTime),
       date: normalizeDateValue(item?.date),
       createdAt: safeNumber(item?.createdAt),
       updatedAt: safeNumber(item?.updatedAt)
     };
   }
 
-  function estimateCurrentOdo(items, totalBikeKm) {
+  // 現在ODOの推定：実メーターは単調増加なので最大ODOの記録を基準点にし、
+  // その実施日以降に走った記録kmを日付ベースで加算する（過去メンテの後入力でも狂わない）
+  function estimateCurrentOdo(items) {
     const anchors = (items || []).map(maintenanceOdoAnchor).filter(Boolean);
     if (!anchors.length) return null;
-    anchors.sort((a, b) => {
-      const aTotal = a.totalKmAtTime === null ? -1 : a.totalKmAtTime;
-      const bTotal = b.totalKmAtTime === null ? -1 : b.totalKmAtTime;
-      if (aTotal !== bTotal) return aTotal - bTotal;
-      const dateOrder = a.date.localeCompare(b.date);
-      if (dateOrder) return dateOrder;
-      return (a.updatedAt || a.createdAt || 0) - (b.updatedAt || b.createdAt || 0);
-    });
+    anchors.sort((a, b) =>
+      (a.odo - b.odo) ||
+      a.date.localeCompare(b.date) ||
+      ((a.updatedAt || a.createdAt || 0) - (b.updatedAt || b.createdAt || 0))
+    );
     const latest = anchors[anchors.length - 1];
-    if (latest.totalKmAtTime === null) return latest.odo;
-    return latest.odo + Math.max(0, totalBikeKm - latest.totalKmAtTime);
+    return latest.odo + bikeKmSince(latest.date);
   }
 
-  function maintenanceKmSince(item, currentOdo, totalBikeKm) {
+  function maintenanceKmSince(item, currentOdo) {
     const odo = safeNumber(item?.odoKm);
     if (odo && currentOdo !== null) return Math.max(0, currentOdo - odo);
-    const totalKmAtTime = nonNegativeNumber(item?.totalKmAtTime);
-    if (odo && totalKmAtTime !== null) return Math.max(0, totalBikeKm - totalKmAtTime);
     return bikeKmSince(item?.date);
   }
 
@@ -3135,8 +3135,7 @@
     const items = getMaintenance().slice().sort((a, b) =>
       String(b.date || '').localeCompare(String(a.date || '')) || (b.createdAt || 0) - (a.createdAt || 0)
     );
-    const totalBikeKm = getTotalBikeKm();
-    const currentOdo = estimateCurrentOdo(items, totalBikeKm);
+    const currentOdo = estimateCurrentOdo(items);
 
     // 種類ごとの最新記録 → 「交換から○km」カード
     const latestByType = new Map();
@@ -3145,7 +3144,7 @@
     const status = document.getElementById('maint-status');
     status.innerHTML = latestByType.size === 0 ? '' : `<div class="stats-bar">${
       [...latestByType.values()].map(m => {
-        const kmSince = maintenanceKmSince(m, currentOdo, totalBikeKm);
+        const kmSince = maintenanceKmSince(m, currentOdo);
         return `
         <div class="stat-box">
           <div class="num">${Math.round(kmSince).toLocaleString()}</div>
@@ -3160,7 +3159,7 @@
       return;
     }
     el.innerHTML = items.map(m => {
-      const kmSince = maintenanceKmSince(m, currentOdo, totalBikeKm);
+      const kmSince = maintenanceKmSince(m, currentOdo);
       const odoBased = safeNumber(m.odoKm) && currentOdo !== null;
       return `
       <div class="record-card">
@@ -3228,7 +3227,7 @@
 
   // 初期化
   setDefaultDates();
-  document.getElementById('m-date').valueAsDate = new Date();
+  document.getElementById('m-date').value = todayLocalDate();
   addDistanceRow(DISTANCE_KIND_BIKE, '');
   renderDailyDistanceRows([]);
   initSyncControls();
