@@ -32,6 +32,9 @@ jobs:
         run: |
           mkdir -p public
           cp index.html public/index.html
+          cp manifest.webmanifest public/manifest.webmanifest
+          cp sw.js public/sw.js
+          cp -R icons public/icons
           touch public/.nojekyll
 
       - name: Configure Pages
