@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-bk9mZp+TqjT/EV7qdOj7p1RuAHe3h3Q35DwY2uPDSmQ=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-kbIDMgVK4RWa+583Kr5XQHNo10e4JUjaXyNafvd6gAM=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -979,6 +979,7 @@
         <input type="text" id="m-memo" placeholder="例：ワコーズ 10W-40 / 〇〇バイクショップ" />
       </div>
       <button class="btn-primary" id="m-save-btn">🔧 メンテナンスを記録する</button>
+      <button class="btn-secondary" id="m-cancel-edit-btn" style="display:none;">編集をキャンセル</button>
     </div>
     <div id="maint-list"></div>
   </div>
@@ -1003,6 +1004,7 @@
   let rating = 0;
   let photoData = [];
   let editingId = null;
+  let editingMaintenanceId = null;
   let memoryRecords = [];
   let memoryMaintenance = [];
   let lastCalcBasis = [];
@@ -2912,13 +2914,13 @@
       if (actionBtn.dataset.recordAction === 'delete') deleteRecord(id);
     });
     document.getElementById('m-save-btn').addEventListener('click', saveMaintenanceEntry);
-    document.getElementById('m-type').addEventListener('change', () => {
-      const isOther = document.getElementById('m-type').value === 'その他';
-      document.getElementById('m-custom-group').style.display = isOther ? 'block' : 'none';
-    });
+    document.getElementById('m-cancel-edit-btn').addEventListener('click', cancelMaintenanceEdit);
+    document.getElementById('m-type').addEventListener('change', updateMaintenanceCustomVisibility);
     document.getElementById('maint-list').addEventListener('click', e => {
       const btn = e.target.closest('[data-maint-action]');
-      if (btn && btn.dataset.maintAction === 'delete') deleteMaintenanceEntry(btn.dataset.maintId);
+      if (!btn) return;
+      if (btn.dataset.maintAction === 'edit') editMaintenanceEntry(btn.dataset.maintId);
+      if (btn.dataset.maintAction === 'delete') deleteMaintenanceEntry(btn.dataset.maintId);
     });
     document.getElementById('modal').addEventListener('click', closeModal);
     window.addEventListener('online', retryPendingSync);
@@ -2952,6 +2954,32 @@
     try {
       if (window.localStorage) localStorage.setItem(MAINT_STORAGE, JSON.stringify(items));
     } catch {}
+  }
+
+  function updateMaintenanceCustomVisibility() {
+    const isOther = document.getElementById('m-type').value === 'その他';
+    document.getElementById('m-custom-group').style.display = isOther ? 'block' : 'none';
+  }
+
+  function setMaintenanceTypeInput(type) {
+    const select = document.getElementById('m-type');
+    const custom = document.getElementById('m-custom');
+    const value = String(type || 'その他');
+    const hasOption = Array.from(select.options).some(option => option.value === value);
+    select.value = hasOption ? value : 'その他';
+    custom.value = hasOption ? '' : value;
+    updateMaintenanceCustomVisibility();
+  }
+
+  function resetMaintenanceForm() {
+    editingMaintenanceId = null;
+    setMaintenanceTypeInput('オイル交換');
+    document.getElementById('m-date').valueAsDate = new Date();
+    document.getElementById('m-cost').value = '';
+    document.getElementById('m-odo').value = '';
+    document.getElementById('m-memo').value = '';
+    document.getElementById('m-save-btn').textContent = '🔧 メンテナンスを記録する';
+    document.getElementById('m-cancel-edit-btn').style.display = 'none';
   }
 
   function maintIcon(type) {
@@ -2993,29 +3021,64 @@
     const odo = safeNumber(document.getElementById('m-odo').value);
     const memo = document.getElementById('m-memo').value.trim();
     const items = getMaintenance();
-    items.push({
-      id: `m${Date.now()}${Math.floor(Math.random() * 100000)}`,
+    const now = Date.now();
+    const wasEditing = editingMaintenanceId !== null;
+    const existing = wasEditing ? items.find(m => sameId(m.id, editingMaintenanceId)) : null;
+    if (wasEditing && !existing) {
+      resetMaintenanceForm();
+      renderMaintenance();
+      showError('編集対象のメンテナンス記録が見つかりません');
+      return;
+    }
+    const totalKmAtTime = safeNumber(existing?.totalKmAtTime) || Math.round(getRecords().reduce((s, r) => s + getRecordBikeKm(r), 0));
+    const entry = {
+      ...(existing || {}),
+      id: wasEditing ? String(editingMaintenanceId) : `m${now}${Math.floor(Math.random() * 100000)}`,
       type,
       date,
-      totalKmAtTime: Math.round(getRecords().reduce((s, r) => s + getRecordBikeKm(r), 0)),
+      totalKmAtTime,
       odoKm: odo || null,
       cost: cost || null,
       memo,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    });
-    saveMaintenance(items);
-    document.getElementById('m-cost').value = '';
-    document.getElementById('m-odo').value = '';
-    document.getElementById('m-memo').value = '';
-    document.getElementById('m-custom').value = '';
+      createdAt: safeNumber(existing?.createdAt) || now,
+      updatedAt: now
+    };
+    saveMaintenance(wasEditing
+      ? items.map(item => sameId(item.id, editingMaintenanceId) ? entry : item)
+      : [...items, entry]
+    );
+    resetMaintenanceForm();
     renderMaintenance();
     queueAutoSync();
-    showToast('🔧 メンテナンスを記録しました');
+    showToast(wasEditing ? '✅ メンテナンスを更新しました' : '🔧 メンテナンスを記録しました');
+  }
+
+  function editMaintenanceEntry(id) {
+    const item = getMaintenance().find(m => sameId(m.id, id));
+    if (!item) {
+      showError('編集対象のメンテナンス記録が見つかりません');
+      return;
+    }
+    editingMaintenanceId = String(item.id);
+    setMaintenanceTypeInput(item.type);
+    document.getElementById('m-date').value = normalizeDateValue(item.date);
+    document.getElementById('m-cost').value = safeNumber(item.cost) || '';
+    document.getElementById('m-odo').value = safeNumber(item.odoKm) || '';
+    document.getElementById('m-memo').value = item.memo || '';
+    document.getElementById('m-save-btn').textContent = '💾 メンテナンスを更新する';
+    document.getElementById('m-cancel-edit-btn').style.display = 'block';
+    document.getElementById('tab-maintenance').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function cancelMaintenanceEdit() {
+    resetMaintenanceForm();
+    renderMaintenance();
+    showToast('編集をキャンセルしました');
   }
 
   function deleteMaintenanceEntry(id) {
     if (!confirm('このメンテナンス記録を削除しますか？')) return;
+    if (sameId(editingMaintenanceId, id)) resetMaintenanceForm();
     rememberDeletedMaintenance(id);
     saveMaintenance(getMaintenance().filter(m => !sameId(m.id, id)));
     renderMaintenance();
@@ -3059,6 +3122,7 @@
         </div>
         ${m.memo ? `<div class="record-memo">${escape(m.memo)}</div>` : ''}
         <div class="record-actions">
+          <button class="btn-gmap-small" data-maint-action="edit" data-maint-id="${escapeAttr(String(m.id))}">✏️ 編集</button>
           <button class="btn-delete" data-maint-action="delete" data-maint-id="${escapeAttr(String(m.id))}">🗑️ 削除</button>
         </div>
       </div>`).join('');
@@ -3116,6 +3180,7 @@
   initSyncControls();
   initRoutingControls();
   bindEvents();
+  resetMaintenanceForm();
   switchTab('add');
   retryPendingSync();
 
