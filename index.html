@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-hnDd3DbdkL1Z8DXeHEnKIPBLpkOhSmzMx+yhZggtLbw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WjWaMY0JyZ5KvwhYQoCk9pIub/cVLTTLpSYee/guoXM=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1014,6 +1014,7 @@
   const SYNC_DELETED_STORAGE = 'touring_deleted_records';
   const ROUTING_KEY_STORAGE = 'touring_routing_key';
   const MAINT_STORAGE = 'touring_maintenance';
+  const SYNC_PENDING_STORAGE = 'touring_sync_pending';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -2070,7 +2071,7 @@
       return;
     }
     const { apiUrl, syncKey } = getSyncSettings();
-    el.textContent = apiUrl && syncKey ? '設定済み' : '未設定';
+    el.textContent = apiUrl && syncKey ? (getSyncPendingStamp() ? '同期待ち' : '設定済み') : '未設定';
   }
 
   function initRoutingControls() {
@@ -2115,6 +2116,43 @@
     safe.photos = [];
     safe.photoCount = photos.length;
     return safe;
+  }
+
+  // メンテナンス記録は「maint:」IDの特殊レコードに包んで既存の同期ストリームへ相乗りさせる
+  // （Worker・D1は無変更。受信側で振り分けて touring_maintenance へ戻す）
+  const MAINT_SYNC_PREFIX = 'maint:';
+
+  function isMaintSyncRecord(record) {
+    return !!record && (record.kind === 'maintenance' || String(record.id || '').startsWith(MAINT_SYNC_PREFIX));
+  }
+
+  function maintToSyncRecord(m) {
+    const createdAt = Number(m.createdAt) || Date.now();
+    return {
+      id: MAINT_SYNC_PREFIX + String(m.id),
+      kind: 'maintenance',
+      maint: { ...m },
+      updatedAt: Number(m.updatedAt) || createdAt
+    };
+  }
+
+  function syncRecordToMaint(record) {
+    const maint = record && record.maint && typeof record.maint === 'object' ? record.maint : {};
+    const fallbackId = String(record.id || '').slice(MAINT_SYNC_PREFIX.length);
+    return { ...maint, id: String(maint.id || fallbackId) };
+  }
+
+  // 旧バージョン端末の同期でツーリング記録側に紛れ込んだメンテレコードを回収する
+  function healMaintWrappersInRecords() {
+    const records = getRecords();
+    const wrappers = records.filter(isMaintSyncRecord);
+    if (!wrappers.length) return;
+    const byId = new Map(getMaintenance().map(m => [String(m.id), m]));
+    wrappers.map(syncRecordToMaint).forEach(m => {
+      if (m.id && !byId.has(String(m.id))) byId.set(String(m.id), m);
+    });
+    saveMaintenance([...byId.values()]);
+    saveRecords(records.filter(r => !isMaintSyncRecord(r)));
   }
 
   function isLegacyRecord(record) {
@@ -2177,10 +2215,39 @@
     });
   }
 
+  // 同期待ちフラグ（オフライン中の変更を覚えておき、復帰時に自動再送する）
+  function setSyncPending() {
+    setStoredValue(SYNC_PENDING_STORAGE, String(Date.now()));
+  }
+
+  function getSyncPendingStamp() {
+    return Number(getStoredValue(SYNC_PENDING_STORAGE)) || 0;
+  }
+
+  function clearSyncPending() {
+    try {
+      if (window.localStorage) localStorage.removeItem(SYNC_PENDING_STORAGE);
+    } catch {}
+  }
+
   function queueAutoSync() {
     const { apiUrl, syncKey } = getSyncSettings();
-    if (!apiUrl || !syncKey || syncInProgress) return;
+    if (!apiUrl || !syncKey) return;
+    setSyncPending();
+    if (syncInProgress) return;
+    if (!navigator.onLine) {
+      updateSyncStatus('オフライン（同期待ち）');
+      return;
+    }
     syncNow({ silent: true });
+  }
+
+  // 電波復帰・アプリ再表示・起動時に、未送信の変更があれば自動同期する
+  function retryPendingSync() {
+    const { apiUrl, syncKey } = getSyncSettings();
+    if (!apiUrl || !syncKey || !getSyncPendingStamp() || syncInProgress) return;
+    if (!navigator.onLine) return;
+    syncNow({ silent: true, recovered: true });
   }
 
   function exportRecords() {
@@ -2260,9 +2327,11 @@
     updateSyncStatus('同期中…');
     const btn = document.getElementById('btn-sync-now');
     if (btn) btn.disabled = true;
+    const startedAt = Date.now();
 
     try {
       const localRecords = prepareLocalRecordsForSync();
+      const localAll = [...localRecords, ...getMaintenance().map(maintToSyncRecord)];
       const deletedMap = getDeletedRecordMap();
       const deletedRecords = Object.entries(deletedMap).map(([id, deletedAt]) => ({ id, deletedAt }));
       const res = await fetch(`${apiUrl}/api/sync`, {
@@ -2270,7 +2339,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           syncKey,
-          records: localRecords.map(prepareRecordForCloud),
+          records: localAll.map(prepareRecordForCloud),
           deletedRecords
         })
       });
@@ -2278,15 +2347,28 @@
       const data = await res.json();
       const remoteRecords = Array.isArray(data.records) ? data.records : [];
       const remoteDeleted = Array.isArray(data.deletedRecords) ? data.deletedRecords : [];
-      const mergedDeleted = mergeDeletedRecords(deletedMap, remoteDeleted);
-      const mergedRecords = mergeSyncedRecords(localRecords, remoteRecords, mergedDeleted);
+      // 書き戻しは「同期中に入った変更」を消さないよう、送信時スナップショットでなく最新ローカルと再マージする
+      const mergedDeleted = mergeDeletedRecords(getDeletedRecordMap(), remoteDeleted);
+      const latestAll = [...prepareLocalRecordsForSync(), ...getMaintenance().map(maintToSyncRecord)];
+      const mergedAll = mergeSyncedRecords(latestAll, remoteRecords, mergedDeleted);
+      const mergedRecords = mergedAll.filter(r => !isMaintSyncRecord(r));
+      const mergedMaint = mergedAll.filter(isMaintSyncRecord).map(syncRecordToMaint);
       saveDeletedRecordMap(mergedDeleted);
       saveRecords(mergedRecords);
+      saveMaintenance(mergedMaint);
       renderList();
+      if (document.getElementById('tab-maintenance').style.display !== 'none') renderMaintenance();
       updateSyncStatus(`同期済み ${mergedRecords.length}件`);
-      if (!options.silent) showToast(`☁️ 同期しました（${mergedRecords.length}件）`);
+      if (getSyncPendingStamp() > startedAt) {
+        // 同期中に入った変更を続けて送る
+        setTimeout(queueAutoSync, 100);
+      } else {
+        clearSyncPending();
+      }
+      if (options.recovered) showToast('☁️ オフライン中の変更を同期しました');
+      else if (!options.silent) showToast(`☁️ 同期しました（${mergedRecords.length}件）`);
     } catch (e) {
-      updateSyncStatus('同期失敗');
+      updateSyncStatus(navigator.onLine ? '同期失敗' : 'オフライン（同期待ち）');
       if (!options.silent) showError(e.message);
     } finally {
       syncInProgress = false;
@@ -2721,6 +2803,10 @@
       if (btn && btn.dataset.maintAction === 'delete') deleteMaintenanceEntry(btn.dataset.maintId);
     });
     document.getElementById('modal').addEventListener('click', closeModal);
+    window.addEventListener('online', retryPendingSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') retryPendingSync();
+    });
   }
 
   // 削除
@@ -2805,13 +2891,16 @@
     document.getElementById('m-memo').value = '';
     document.getElementById('m-custom').value = '';
     renderMaintenance();
+    queueAutoSync();
     showToast('🔧 メンテナンスを記録しました');
   }
 
   function deleteMaintenanceEntry(id) {
     if (!confirm('このメンテナンス記録を削除しますか？')) return;
+    rememberDeletedRecord(MAINT_SYNC_PREFIX + String(id));
     saveMaintenance(getMaintenance().filter(m => !sameId(m.id, id)));
     renderMaintenance();
+    queueAutoSync();
     showToast('🗑️ 削除しました');
   }
 
@@ -2905,10 +2994,12 @@
   document.getElementById('m-date').valueAsDate = new Date();
   addDistanceRow(DISTANCE_KIND_BIKE, '');
   renderDailyDistanceRows([]);
+  healMaintWrappersInRecords();
   initSyncControls();
   initRoutingControls();
   bindEvents();
   switchTab('add');
+  retryPendingSync();
 
   // PWA: Service Worker登録（https または localhost のみ。file:// では登録しない）
   if ('serviceWorker' in navigator &&
