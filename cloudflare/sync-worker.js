@@ -4,6 +4,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400'
 };
+const MAINTENANCE_PREFIX = 'maintenance:';
 
 export default {
   async fetch(request, env) {
@@ -40,6 +41,8 @@ async function handleSync(request, env) {
   const syncKeyHash = await sha256(syncKey);
   const records = Array.isArray(body.records) ? body.records : [];
   const deletedRecords = Array.isArray(body.deletedRecords) ? body.deletedRecords : [];
+  const maintenance = Array.isArray(body.maintenance) ? body.maintenance : [];
+  const deletedMaintenance = Array.isArray(body.deletedMaintenance) ? body.deletedMaintenance : [];
   const now = Date.now();
 
   for (const item of deletedRecords) {
@@ -49,11 +52,31 @@ async function handleSync(request, env) {
     await upsertDeleted(env.DB, syncKeyHash, id, deletedAt);
   }
 
+  for (const item of deletedMaintenance) {
+    const id = normalizeId(item.id || item.recordId);
+    if (!id) continue;
+    const deletedAt = normalizeTimestamp(item.deletedAt || item.deleted_at) || now;
+    await upsertDeleted(env.DB, syncKeyHash, maintenanceRecordId(id), deletedAt);
+  }
+
   for (const record of records) {
     const id = normalizeId(record?.id);
     if (!id) continue;
     const updatedAt = normalizeTimestamp(record.updatedAt) || now;
     await upsertActive(env.DB, syncKeyHash, id, sanitizeRecord(record, updatedAt), updatedAt);
+  }
+
+  for (const item of maintenance) {
+    const id = normalizeId(item?.id);
+    if (!id) continue;
+    const updatedAt = normalizeTimestamp(item.updatedAt || item.createdAt) || now;
+    await upsertActive(
+      env.DB,
+      syncKeyHash,
+      maintenanceRecordId(id),
+      sanitizeMaintenance(item, updatedAt),
+      updatedAt
+    );
   }
 
   const rows = await env.DB.prepare(
@@ -64,18 +87,39 @@ async function handleSync(request, env) {
 
   const active = [];
   const deleted = [];
+  const activeMaintenance = [];
+  const deletedMaint = [];
   for (const row of rows.results || []) {
+    const isMaintenance = isMaintenanceRecordId(row.record_id);
     if (row.deleted_at) {
-      deleted.push({ id: row.record_id, deletedAt: Number(row.deleted_at) });
+      const item = { id: stripMaintenanceRecordId(row.record_id), deletedAt: Number(row.deleted_at) };
+      if (isMaintenance) {
+        deletedMaint.push(item);
+      } else {
+        deleted.push(item);
+      }
       continue;
     }
     if (!row.data) continue;
     try {
-      active.push(JSON.parse(row.data));
+      const data = JSON.parse(row.data);
+      if (isMaintenance) {
+        activeMaintenance.push({
+          ...data,
+          id: stripMaintenanceRecordId(row.record_id)
+        });
+      } else {
+        active.push(data);
+      }
     } catch {}
   }
 
-  return jsonResponse({ records: active, deletedRecords: deleted });
+  return jsonResponse({
+    records: active,
+    deletedRecords: deleted,
+    maintenance: activeMaintenance,
+    deletedMaintenance: deletedMaint
+  });
 }
 
 async function upsertDeleted(db, syncKeyHash, id, deletedAt) {
@@ -129,6 +173,27 @@ function sanitizeRecord(record, updatedAt) {
   };
 }
 
+function sanitizeMaintenance(item, updatedAt) {
+  return {
+    ...item,
+    id: String(item.id),
+    updatedAt
+  };
+}
+
+function maintenanceRecordId(id) {
+  return `${MAINTENANCE_PREFIX}${id}`;
+}
+
+function isMaintenanceRecordId(id) {
+  return String(id || '').startsWith(MAINTENANCE_PREFIX);
+}
+
+function stripMaintenanceRecordId(id) {
+  const value = String(id || '');
+  return isMaintenanceRecordId(value) ? value.slice(MAINTENANCE_PREFIX.length) : value;
+}
+
 function normalizeId(value) {
   const id = String(value || '').trim();
   return id ? id.slice(0, 128) : '';
@@ -156,4 +221,3 @@ function jsonResponse(data, status = 200) {
     }
   });
 }
-

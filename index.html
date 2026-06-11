@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-hnDd3DbdkL1Z8DXeHEnKIPBLpkOhSmzMx+yhZggtLbw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-hyVg0BGKemU3sYHaWdDPaKUDvdumEZhOGyI9GKsKdyk=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1012,6 +1012,7 @@
   const SYNC_KEY_STORAGE = 'touring_sync_key';
   const SYNC_API_STORAGE = 'touring_sync_api_url';
   const SYNC_DELETED_STORAGE = 'touring_deleted_records';
+  const SYNC_DELETED_MAINT_STORAGE = 'touring_deleted_maintenance';
   const ROUTING_KEY_STORAGE = 'touring_routing_key';
   const MAINT_STORAGE = 'touring_maintenance';
   let syncInProgress = false;
@@ -2033,6 +2034,29 @@
     saveDeletedRecordMap(deleted);
   }
 
+  function getDeletedMaintenanceMap() {
+    try {
+      if (!window.localStorage) return {};
+      const data = JSON.parse(localStorage.getItem(SYNC_DELETED_MAINT_STORAGE) || '{}');
+      return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveDeletedMaintenanceMap(map) {
+    try {
+      if (window.localStorage) localStorage.setItem(SYNC_DELETED_MAINT_STORAGE, JSON.stringify(map || {}));
+    } catch {}
+  }
+
+  function rememberDeletedMaintenance(id) {
+    if (id === null || id === undefined || id === '') return;
+    const deleted = getDeletedMaintenanceMap();
+    deleted[String(id)] = Date.now();
+    saveDeletedMaintenanceMap(deleted);
+  }
+
   function normalizeSyncApiUrl(value) {
     return String(value || '').trim().replace(/\/+$/, '');
   }
@@ -2109,6 +2133,27 @@
     return records;
   }
 
+  function ensureMaintenanceUpdatedAt(item, fallbackTime) {
+    const id = String(item?.id || `m${fallbackTime}${Math.floor(Math.random() * 100000)}`);
+    const updatedAt = Number(item?.updatedAt || item?.createdAt);
+    const createdAt = Number(item?.createdAt);
+    return {
+      ...item,
+      id,
+      createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : fallbackTime,
+      updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : fallbackTime
+    };
+  }
+
+  function prepareLocalMaintenanceForSync() {
+    const now = Date.now();
+    const items = getMaintenance()
+      .filter(item => item && typeof item === 'object' && normalizeDateValue(item.date))
+      .map(item => ensureMaintenanceUpdatedAt(item, now));
+    saveMaintenance(items);
+    return items;
+  }
+
   function prepareRecordForCloud(record) {
     const safe = { ...record };
     const photos = Array.isArray(record.photos) ? record.photos : [];
@@ -2147,6 +2192,10 @@
     return merged;
   }
 
+  function mergeDeletedMaintenance(localDeleted, remoteDeleted) {
+    return mergeDeletedRecords(localDeleted, remoteDeleted);
+  }
+
   function mergeSyncedRecords(localRecords, remoteRecords, deletedMap) {
     const byId = new Map();
     const localById = new Map(localRecords.map(r => [String(r.id), r]));
@@ -2177,6 +2226,28 @@
     });
   }
 
+  function mergeSyncedMaintenance(localItems, remoteItems, deletedMap) {
+    const byId = new Map();
+
+    [...localItems, ...(remoteItems || [])].forEach(item => {
+      if (!item || item.id === null || item.id === undefined || !normalizeDateValue(item.date)) return;
+      const id = String(item.id);
+      const updatedAt = Number(item.updatedAt || item.createdAt || 0);
+      const deletedAt = Number(deletedMap[id] || 0);
+      if (deletedAt && deletedAt >= updatedAt) return;
+
+      const current = byId.get(id);
+      if (!current || Number(current.updatedAt || current.createdAt || 0) <= updatedAt) {
+        byId.set(id, ensureMaintenanceUpdatedAt(item, Date.now()));
+      }
+    });
+
+    return Array.from(byId.values()).sort((a, b) =>
+      String(b.date || '').localeCompare(String(a.date || '')) ||
+      Number(b.createdAt || 0) - Number(a.createdAt || 0)
+    );
+  }
+
   function queueAutoSync() {
     const { apiUrl, syncKey } = getSyncSettings();
     if (!apiUrl || !syncKey || syncInProgress) return;
@@ -2190,7 +2261,8 @@
       exportedAt: new Date().toISOString(),
       records: prepareLocalRecordsForSync(),
       deletedRecords: Object.entries(getDeletedRecordMap()).map(([id, deletedAt]) => ({ id, deletedAt })),
-      maintenance: getMaintenance()
+      maintenance: prepareLocalMaintenanceForSync(),
+      deletedMaintenance: Object.entries(getDeletedMaintenanceMap()).map(([id, deletedAt]) => ({ id, deletedAt }))
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -2224,18 +2296,16 @@
       saveDeletedRecordMap(mergedDeleted);
       saveRecords(mergedRecords);
 
-      // メンテナンス記録は同ID重複を除いて取り込む（ローカル優先）
+      // メンテナンス記録もツーリング記録と同じく更新日時と削除履歴でマージする
       const importedMaint = Array.isArray(data.maintenance) ? data.maintenance : [];
-      if (importedMaint.length) {
-        const byId = new Map(getMaintenance().map(m => [String(m.id), m]));
-        importedMaint.forEach(m => {
-          if (!m || typeof m !== 'object' || !normalizeDateValue(m.date)) return;
-          const id = String(m.id || `m${Date.now()}${Math.floor(Math.random() * 100000)}`);
-          if (!byId.has(id)) byId.set(id, { ...m, id });
-        });
-        saveMaintenance([...byId.values()]);
-        if (document.getElementById('tab-maintenance').style.display !== 'none') renderMaintenance();
-      }
+      const importedDeletedMaint = Array.isArray(data.deletedMaintenance) ? data.deletedMaintenance : [];
+      const localMaint = prepareLocalMaintenanceForSync();
+      const mergedDeletedMaint = mergeDeletedMaintenance(getDeletedMaintenanceMap(), importedDeletedMaint);
+      const preparedMaint = importedMaint.map(m => ensureMaintenanceUpdatedAt(m, fallbackTime));
+      const mergedMaint = mergeSyncedMaintenance(localMaint, preparedMaint, mergedDeletedMaint);
+      saveDeletedMaintenanceMap(mergedDeletedMaint);
+      saveMaintenance(mergedMaint);
+      if (document.getElementById('tab-maintenance').style.display !== 'none') renderMaintenance();
 
       renderList();
       queueAutoSync();
@@ -2263,28 +2333,40 @@
 
     try {
       const localRecords = prepareLocalRecordsForSync();
+      const localMaintenance = prepareLocalMaintenanceForSync();
       const deletedMap = getDeletedRecordMap();
+      const deletedMaintMap = getDeletedMaintenanceMap();
       const deletedRecords = Object.entries(deletedMap).map(([id, deletedAt]) => ({ id, deletedAt }));
+      const deletedMaintenance = Object.entries(deletedMaintMap).map(([id, deletedAt]) => ({ id, deletedAt }));
       const res = await fetch(`${apiUrl}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           syncKey,
           records: localRecords.map(prepareRecordForCloud),
-          deletedRecords
+          deletedRecords,
+          maintenance: localMaintenance,
+          deletedMaintenance
         })
       });
       if (!res.ok) throw new Error(`同期APIエラー ${res.status}`);
       const data = await res.json();
       const remoteRecords = Array.isArray(data.records) ? data.records : [];
       const remoteDeleted = Array.isArray(data.deletedRecords) ? data.deletedRecords : [];
+      const remoteMaintenance = Array.isArray(data.maintenance) ? data.maintenance : [];
+      const remoteDeletedMaintenance = Array.isArray(data.deletedMaintenance) ? data.deletedMaintenance : [];
       const mergedDeleted = mergeDeletedRecords(deletedMap, remoteDeleted);
       const mergedRecords = mergeSyncedRecords(localRecords, remoteRecords, mergedDeleted);
+      const mergedDeletedMaint = mergeDeletedMaintenance(deletedMaintMap, remoteDeletedMaintenance);
+      const mergedMaintenance = mergeSyncedMaintenance(localMaintenance, remoteMaintenance, mergedDeletedMaint);
       saveDeletedRecordMap(mergedDeleted);
+      saveDeletedMaintenanceMap(mergedDeletedMaint);
       saveRecords(mergedRecords);
+      saveMaintenance(mergedMaintenance);
       renderList();
-      updateSyncStatus(`同期済み ${mergedRecords.length}件`);
-      if (!options.silent) showToast(`☁️ 同期しました（${mergedRecords.length}件）`);
+      if (document.getElementById('tab-maintenance').style.display !== 'none') renderMaintenance();
+      updateSyncStatus(`同期済み 記録${mergedRecords.length}件 / メンテ${mergedMaintenance.length}件`);
+      if (!options.silent) showToast(`☁️ 同期しました（記録${mergedRecords.length}件・メンテ${mergedMaintenance.length}件）`);
     } catch (e) {
       updateSyncStatus('同期失敗');
       if (!options.silent) showError(e.message);
@@ -2797,7 +2879,8 @@
       odoKm: odo || null,
       cost: cost || null,
       memo,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     });
     saveMaintenance(items);
     document.getElementById('m-cost').value = '';
@@ -2805,13 +2888,16 @@
     document.getElementById('m-memo').value = '';
     document.getElementById('m-custom').value = '';
     renderMaintenance();
+    queueAutoSync();
     showToast('🔧 メンテナンスを記録しました');
   }
 
   function deleteMaintenanceEntry(id) {
     if (!confirm('このメンテナンス記録を削除しますか？')) return;
+    rememberDeletedMaintenance(id);
     saveMaintenance(getMaintenance().filter(m => !sameId(m.id, id)));
     renderMaintenance();
+    queueAutoSync();
     showToast('🗑️ 削除しました');
   }
 
