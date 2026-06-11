@@ -5,7 +5,7 @@
 ## 無料枠で使う構成
 
 - Cloudflare Workers: 同期API
-- Cloudflare D1: 記録本文の保存
+- Cloudflare D1: 記録本文とメンテナンス記録の保存
 - `workers.dev`: 無料のAPI URL
 - 写真: 初期同期では除外
 
@@ -34,5 +34,4 @@ https://touring-record-sync.hi-ikemoto.workers.dev
 
 - 同期キーはD1へ平文保存しません。Worker側でハッシュ化して保存します。
 - 既存のlocalStorage記録は残ります。
-- iPhone側の写真データは容量が大きいため、まずは本文だけ同期します。
-
+- iPhone側の写真データは容量が大きいため、同期対象は本文とメンテナンス記録です。

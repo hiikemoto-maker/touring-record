@@ -31,7 +31,7 @@ Build commandは空、Publish directoryは `.` です。
 
 - ツーリング記録はまずブラウザのlocalStorageに保存されます。
 - クラウド同期を使う場合は、Cloudflare Worker + D1 の同期APIを別途公開します。
-- 写真データは容量が大きいため、初期のクラウド同期では本文データのみ同期します。
+- 写真データは容量が大きいため、クラウド同期では本文データとメンテナンス記録のみ同期します。
 - `AGENTS.md` や `.claude` はVercel/Netlifyでは公開対象から除外します。
 
 ## Cloudflare D1 同期API
