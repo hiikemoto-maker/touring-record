@@ -4,14 +4,15 @@
  * - heic2any CDN (unpkg): SRI固定で不変のためキャッシュ優先
  * - 地図・天気・クラウド同期などのAPI: 介入しない（キャッシュすると同期の正しさを壊すため）
  */
-const CACHE_NAME = 'touring-shell-v6';
+const CACHE_NAME = 'touring-shell-v7';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icons/icon-192.png?v=photo-icon-20260613-crop2x',
-  './icons/icon-512.png?v=photo-icon-20260613-crop2x',
-  './icons/apple-touch-icon.png?v=photo-icon-20260613-crop2x',
+  './icons/icon-192.png?v=photo-icon-20260613-full',
+  './icons/icon-512.png?v=photo-icon-20260613-full',
+  './icons/apple-touch-icon.png?v=photo-icon-20260613-full',
+  './icons/header-photo.png?v=photo-icon-20260613-wide',
 ];
 
 self.addEventListener('install', (event) => {
