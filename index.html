@@ -8,6 +8,7 @@
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
   <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.png?v=photo-icon-20260613" />
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=photo-icon-20260613" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -29,7 +30,22 @@
       text-align: center;
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
-    header h1 { font-size: 1.8rem; letter-spacing: 2px; }
+    header h1 {
+      font-size: 1.8rem;
+      letter-spacing: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .app-title-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #1a1a2e;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
     header p  { font-size: 0.85rem; opacity: 0.8; margin-top: 4px; }
 
     .container {
@@ -744,7 +760,7 @@
 <body>
 
 <header>
-  <h1>🏍️ ツーリング記録帳</h1>
+  <h1><img class="app-title-icon" src="./icons/icon-192.png?v=photo-icon-20260613" alt="" />ツーリング記録帳</h1>
   <p>あなたの走った道を、ずっと残そう</p>
 </header>
 
