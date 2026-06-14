@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-QMs89AfCNsn7H61SH4bAK+6G3eSnmDj2TuwXc2oXCfw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-LdyEjmy3zhDXmgFb0/gk3JmgAEAMmkXUpEY/vLj9BOQ=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -210,6 +210,21 @@
       transition: all 0.2s;
     }
     .btn-remove-stop:hover { border-color: #e94560; color: #e94560; }
+    .stop-photo-area { margin-top: 8px; }
+    .btn-stop-photo {
+      font-size: 0.82rem; padding: 6px 12px; border-radius: 6px;
+      border: 1px dashed #5a6a8a; background: #16213e; color: #cfe3ff; cursor: pointer;
+    }
+    .btn-stop-photo:hover { border-color: #83d4cf; color: #fff; }
+    .stop-photo-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .stop-photo-thumb { position: relative; display: inline-block; }
+    .stop-photo-thumb img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; display: block; }
+    .btn-remove-stop-photo {
+      position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+      border-radius: 50%; border: none; background: #e94560; color: #fff;
+      font-size: 12px; line-height: 1; cursor: pointer; padding: 0;
+    }
+    .stop-note-photos { margin-top: 6px; }
     .btn-add-stop {
       background: none;
       border: 1px dashed #2a4a7f;
@@ -1200,7 +1215,7 @@
   let syncInProgress = false;
 
   // 経由地・フェリー区間
-  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike', distanceKm = null, date = '') {
+  function addStop(name = '', memo = '', rating = 0, type = 'stop', toName = '', vehicle = 'bike', distanceKm = null, date = '', photos = []) {
     const list = document.getElementById('stop-list');
     const idx  = `s${Date.now()}${Math.floor(Math.random() * 100000)}`;
     const isFerry = type === 'ferry';
@@ -1238,8 +1253,28 @@
         ${[1,2,3,4,5].map(v => `<span class="stop-star ${rating >= v ? 'on' : ''}" data-v="${v}">★</span>`).join('')}
       </div>
       <textarea class="stop-memo" placeholder="${isFerry ? '航路名・船内メモ（例：夕方便、船内で休憩できた）' : '感想・メモ（例：ソフトクリームが絶品！景色も最高だった）'}">${escape(memo)}</textarea>
+      <div class="stop-photo-area">
+        <button type="button" class="btn-stop-photo" data-stop-photo>📷 写真を追加</button>
+        <input type="file" class="stop-photo-input" accept="image/*,.heic,.heif" multiple style="display:none;" />
+        <div class="stop-photo-preview"></div>
+      </div>
     `;
     list.appendChild(card);
+    card.__photos = (photos || []).filter(isSafeImageSrc).slice(0, MAX_PHOTOS);
+    renderStopPhotos(card);
+  }
+
+  // 立ち寄り地カードの写真サムネイルを再描画（card.__photos が真実の値）
+  function renderStopPhotos(card) {
+    const preview = card.querySelector('.stop-photo-preview');
+    if (!preview) return;
+    const photos = (card.__photos || []).filter(isSafeImageSrc);
+    card.__photos = photos;
+    preview.innerHTML = photos.map((dataUrl, i) => `
+      <span class="stop-photo-thumb">
+        <img src="${escapeAttr(dataUrl)}" alt="" />
+        <button type="button" class="btn-remove-stop-photo" data-remove-stop-photo="${i}" title="削除">×</button>
+      </span>`).join('');
   }
 
   function updateStopType(select) {
@@ -1283,6 +1318,9 @@
         rating: onStars.length
       };
       if (date) stop.date = date;
+      if (Array.isArray(card.__photos) && card.__photos.length) {
+        stop.photos = card.__photos.filter(isSafeImageSrc);
+      }
       if (type === 'ferry') {
         stop.toName = card.querySelector('.ferry-to-name').value.trim();
         const distanceKm = normalizeDistanceKm(card.querySelector('.ferry-km')?.value);
@@ -1717,7 +1755,8 @@
         distanceKm: normalizeDistanceKm(s.distanceKm),
         date: normalizeDateValue(s.date),
         memo: s.memo || '',
-        rating: s.rating || 0
+        rating: s.rating || 0,
+        photos: Array.isArray(s.photos) ? s.photos.filter(isStorablePhoto) : []
       };
     });
   }
@@ -2028,14 +2067,10 @@
     document.getElementById('f-date-to').value   = todayLocalDate();
   }
 
-  // 写真プレビュー（HEIC/HEIF自動変換対応）
-  async function previewPhotos(e) {
-    photoData = [];
-    const preview = document.getElementById('photo-preview');
-    preview.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">読み込み中…</span>';
-    const files = Array.from(e.target.files).slice(0, MAX_PHOTOS);
+  // 写真ファイル（HEIC/HEIF自動変換・サイズ制限）→ data:URL配列。記録用/立ち寄り地用で共用。
+  async function processPhotoFiles(fileList) {
+    const files = Array.from(fileList || []).slice(0, MAX_PHOTOS);
     let totalBytes = 0;
-
     const results = await Promise.all(files.map(async file => {
       const isHeic = file.type === 'image/heic' || file.type === 'image/heif'
         || /\.(heic|heif)$/i.test(file.name);
@@ -2050,10 +2085,17 @@
       }
       return await readAsDataURL(file);
     }));
+    return results.filter(isSafeImageSrc);
+  }
 
+  // 写真プレビュー（記録全体）
+  async function previewPhotos(e) {
+    const preview = document.getElementById('photo-preview');
+    preview.innerHTML = '<span style="color:#aaa;font-size:0.85rem;">読み込み中…</span>';
+    const dataUrls = await processPhotoFiles(e.target.files);
+    photoData = dataUrls;
     preview.innerHTML = '';
-    results.filter(isSafeImageSrc).forEach(dataUrl => {
-      photoData.push(dataUrl);
+    photoData.forEach(dataUrl => {
       const img = document.createElement('img');
       img.src = dataUrl;
       preview.appendChild(img);
@@ -2103,6 +2145,10 @@
     if (stops.some(s => s.type === 'ferry' && (!s.name || !s.toName))) {
       showToast('フェリー区間は乗船港と下船港を入力してください');
       return;
+    }
+    // 立ち寄り地ごとの写真もIDBへ退避してref化する
+    for (const s of stops) {
+      if (Array.isArray(s.photos) && s.photos.length) s.photos = await storePhotos(s.photos);
     }
 
     const dailyDistances = getDailyDistances();
@@ -2677,8 +2723,13 @@
       exportedAt: new Date().toISOString(),
       records: prepareLocalRecordsForSync().map(r => ({
         ...r,
-        // バックアップは可搬性のため写真をdata:URLでインライン化する
-        photos: Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc) : []
+        // バックアップは可搬性のため写真（記録全体・立ち寄り地）をdata:URLでインライン化する
+        photos: Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc) : [],
+        stops: Array.isArray(r.stops)
+          ? r.stops.map(s => (s && Array.isArray(s.photos) && s.photos.length)
+              ? { ...s, photos: s.photos.map(photoSrc).filter(isSafeImageSrc) }
+              : s)
+          : r.stops
       })),
       deletedRecords: Object.entries(getDeletedRecordMap()).map(([id, deletedAt]) => ({ id, deletedAt })),
       maintenance: prepareLocalMaintenanceForSync(),
@@ -2862,7 +2913,7 @@
     document.getElementById('f-memo').value = r.memo || '';
 
     document.getElementById('stop-list').innerHTML = '';
-    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle, s.distanceKm, s.date));
+    normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle, s.distanceKm, s.date, (s.photos || []).map(photoSrc).filter(isSafeImageSrc)));
     photoData = Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
     renderPhotoPreview();
     setMainRating(r.rating || 0);
@@ -3114,16 +3165,21 @@
     const memoLine = s.memo
       ? `<div style="font-size:0.88rem;color:#ccc;white-space:pre-wrap;">${escape(s.memo)}</div>`
       : '';
+    const stopPhotos = (s.photos || []).map(photoSrc).filter(isSafeImageSrc);
+    const photoLine = stopPhotos.length
+      ? `<div class="record-photos stop-note-photos">${stopPhotos.map(p => `<img src="${escapeAttr(p)}" data-modal-src="${escapeAttr(p)}" alt="" />`).join('')}</div>`
+      : '';
     return `
             <div style="border-left:3px solid ${color};padding:6px 10px;margin-bottom:6px;background:#0f3460;border-radius:0 6px 6px 0;">
               <div style="font-size:0.8rem;color:${color};margin-bottom:3px;">${escape(title)}${safeRating ? `　<span style="color:#f5a623;">${'★'.repeat(safeRating)}${'☆'.repeat(5-safeRating)}</span>` : ''}</div>
               ${dateLine}
               ${memoLine}
+              ${photoLine}
             </div>`;
   }
 
   function renderStopNotes(r) {
-    const notes = normalizeStops(r.stops).filter(s => s.memo || s.date);
+    const notes = normalizeStops(r.stops).filter(s => s.memo || s.date || (s.photos && s.photos.length));
     if (!notes.length) return '';
     return `
       <div style="margin-bottom:10px;">
@@ -3278,27 +3334,45 @@
     return out;
   }
 
-  // localStorage内のレガシーdata:写真をIDBへ退避してrefに置き換える（冪等・無損失）
+  // data:写真の配列をIDBへ退避してref配列にする（冪等・無損失：失敗時はdata:のまま残す）
+  async function migratePhotoArray(arr) {
+    const next = [];
+    let changed = false;
+    for (const p of (arr || [])) {
+      if (isPhotoRef(p)) { next.push(p); continue; }
+      if (!isSafeImageSrc(p)) continue;
+      try {
+        const ref = await idbPutPhoto(p);
+        photoCache.set(ref, p);
+        next.push(ref);
+        changed = true;
+      } catch {
+        next.push(p);
+      }
+    }
+    return { photos: next, changed };
+  }
+
+  // localStorage内のレガシーdata:写真（記録全体・立ち寄り地）をIDBへ退避してrefに置き換える
   async function migrateLegacyPhotos() {
     if (!window.indexedDB) return;
     const records = getRecords();
     let changed = false;
     for (const r of records) {
-      if (!Array.isArray(r.photos) || !r.photos.length) continue;
-      const next = [];
-      for (const p of r.photos) {
-        if (isPhotoRef(p)) { next.push(p); continue; }
-        if (!isSafeImageSrc(p)) continue;
-        try {
-          const ref = await idbPutPhoto(p);
-          photoCache.set(ref, p);
-          next.push(ref);
-          changed = true;
-        } catch {
-          next.push(p);
+      if (Array.isArray(r.photos) && r.photos.length) {
+        const res = await migratePhotoArray(r.photos);
+        r.photos = res.photos;
+        changed = changed || res.changed;
+      }
+      if (Array.isArray(r.stops)) {
+        for (const s of r.stops) {
+          if (s && Array.isArray(s.photos) && s.photos.length) {
+            const res = await migratePhotoArray(s.photos);
+            s.photos = res.photos;
+            changed = changed || res.changed;
+          }
         }
       }
-      r.photos = next;
     }
     if (changed) saveRecords(records);
   }
@@ -3374,10 +3448,28 @@
         return;
       }
       const star = e.target.closest('.stop-star');
-      if (star) setStopRating(star);
+      if (star) { setStopRating(star); return; }
+      const photoBtn = e.target.closest('[data-stop-photo]');
+      if (photoBtn) {
+        photoBtn.parentElement.querySelector('.stop-photo-input').click();
+        return;
+      }
+      const rmPhoto = e.target.closest('[data-remove-stop-photo]');
+      if (rmPhoto) {
+        const card = rmPhoto.closest('.stop-card');
+        card.__photos = (card.__photos || []).filter((_, i) => i !== Number(rmPhoto.dataset.removeStopPhoto));
+        renderStopPhotos(card);
+      }
     });
-    document.getElementById('stop-list').addEventListener('change', e => {
+    document.getElementById('stop-list').addEventListener('change', async e => {
       if (e.target.classList.contains('stop-type')) updateStopType(e.target);
+      if (e.target.classList.contains('stop-photo-input')) {
+        const card = e.target.closest('.stop-card');
+        const dataUrls = await processPhotoFiles(e.target.files);
+        card.__photos = [...(card.__photos || []), ...dataUrls].filter(isSafeImageSrc).slice(0, MAX_PHOTOS);
+        renderStopPhotos(card);
+        e.target.value = '';
+      }
     });
 
     document.getElementById('record-list').addEventListener('click', e => {
