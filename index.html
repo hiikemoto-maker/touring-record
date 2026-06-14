@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-LpDsddeEHSd3Xmva1rLH8EwBP1WeLUD5gdOCCGTekWU=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WhV7t/yXMcdhWPLKr9jy1h3VR2KdnFUgJolRC479ohI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -75,6 +75,25 @@
       background: #e94560;
       color: #fff;
       font-weight: bold;
+    }
+    .bottom-nav {
+      display: none;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 90;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 10px max(12px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-right));
+      background: rgba(15, 18, 42, 0.96);
+      border-top: 1px solid #2a4a7f;
+      box-shadow: 0 -4px 16px rgba(0,0,0,0.35);
+    }
+    .bottom-nav .tab-btn {
+      padding: 10px 8px;
+      border-radius: 12px;
+      font-size: 0.88rem;
     }
 
     /* ---- フォーム ---- */
@@ -591,6 +610,25 @@
     }
     .btn-sync:hover:not(:disabled) { background: #83d4cf; color: #0f3460; }
     .btn-sync:disabled { opacity: 0.5; cursor: default; }
+    .sync-health {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #2a4a7f;
+      background: #0f3460;
+      color: #ccc;
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .sync-health.good { border-color: #3bb273; color: #d8ffe8; }
+    .sync-health.warn { border-color: #f5a623; color: #ffe7ba; }
+    .sync-health.danger { border-color: #e94560; color: #ffd5dd; }
+    .app-update-status {
+      margin-top: 8px;
+      color: #aaa;
+      font-size: 0.78rem;
+      text-align: right;
+    }
 
     .record-card {
       background: #16213e;
@@ -601,6 +639,9 @@
       position: relative;
       border-left: 4px solid #e94560;
     }
+    .record-card.maint-ok { border-left-color: #3bb273; }
+    .record-card.maint-watch { border-left-color: #f5a623; }
+    .record-card.maint-due { border-left-color: #e94560; }
     .record-header {
       display: flex;
       justify-content: space-between;
@@ -651,6 +692,82 @@
     .record-photos img:hover { transform: scale(1.08); }
 
     .record-stars { color: #f5a623; font-size: 1rem; margin-bottom: 8px; }
+    .record-details {
+      margin: 10px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 0;
+    }
+    .record-details summary {
+      cursor: pointer;
+      color: #83d4cf;
+      font-size: 0.86rem;
+      font-weight: bold;
+      list-style: none;
+      user-select: none;
+    }
+    .record-details summary::-webkit-details-marker { display: none; }
+    .record-details summary::before {
+      content: '▶';
+      display: inline-block;
+      margin-right: 6px;
+      font-size: 0.75rem;
+      transition: transform 0.2s;
+    }
+    .record-details[open] summary::before { transform: rotate(90deg); }
+    .record-details-body {
+      padding-top: 10px;
+    }
+    .record-compact-route {
+      color: #aaa;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      overflow-wrap: anywhere;
+    }
+    .record-calc-basis {
+      background: #0f3460;
+      border: 1px solid #2a4a7f;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .record-calc-basis-title {
+      color: #f5a623;
+      font-size: 0.82rem;
+      font-weight: bold;
+      margin-bottom: 6px;
+    }
+    .record-calc-basis-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 6px;
+      color: #ddd;
+      font-size: 0.78rem;
+      padding: 4px 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .record-calc-basis-row:first-of-type { border-top: none; }
+    .record-calc-basis-km { font-weight: bold; white-space: nowrap; }
+    .maintenance-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+    .maintenance-status-pill.ok { background: rgba(59,178,115,0.18); color: #9effc2; }
+    .maintenance-status-pill.watch { background: rgba(245,166,35,0.18); color: #ffd98f; }
+    .maintenance-status-pill.due { background: rgba(233,69,96,0.18); color: #ffb6c4; }
+    .stat-box.maint-ok { border: 1px solid rgba(59,178,115,0.65); }
+    .stat-box.maint-watch { border: 1px solid rgba(245,166,35,0.75); }
+    .stat-box.maint-due { border: 1px solid rgba(233,69,96,0.85); }
+    .stat-box.maint-ok .num { color: #6ee7a0; }
+    .stat-box.maint-watch .num { color: #f5a623; }
+    .stat-box.maint-due .num { color: #e94560; }
+    .maint-odo-panel { margin-bottom: 16px; }
 
     .btn-delete {
       background: none;
@@ -754,6 +871,29 @@
       padding: 4px 8px;
     }
     .error-dialog-close:hover { color: #e94560; }
+
+    @media (max-width: 760px) {
+      body { padding-bottom: 82px; }
+      header { padding: 18px 16px; }
+      header h1 {
+        font-size: 1.45rem;
+        letter-spacing: 1px;
+        gap: 12px;
+      }
+      .app-title-icon {
+        height: 72px;
+        max-width: 140px;
+      }
+      .container { padding: 18px 14px; }
+      .tabs { display: none; }
+      .bottom-nav { display: grid; }
+      .row2 { flex-direction: column; gap: 0; }
+      .sync-grid,
+      .sync-actions,
+      .backup-actions {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
   <script src="https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js" integrity="sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL" crossorigin="anonymous"></script>
 </head>
@@ -938,8 +1078,11 @@
       <div class="backup-actions">
         <button type="button" class="btn-sync" id="btn-export-records">記録を書き出し</button>
         <button type="button" class="btn-sync" id="btn-import-records">記録を読み込み</button>
+        <button type="button" class="btn-sync" id="btn-refresh-app">最新版を確認</button>
         <button type="button" class="btn-sync" id="btn-clear-legacy-records">旧記録をクリア</button>
       </div>
+      <div class="sync-health" id="backup-health">バックアップ状態を確認中…</div>
+      <div class="app-update-status" id="app-update-status"></div>
       <input id="import-records-file" type="file" accept="application/json,.json" style="display:none;" />
       <div class="sync-header" style="margin-top:0.75rem;">
         <div class="sync-title">🛣 距離計算API（任意）</div>
@@ -958,6 +1101,14 @@
   <!-- ===== メンテナンス ===== -->
   <div id="tab-maintenance">
     <div id="maint-status"></div>
+    <div class="card maint-odo-panel">
+      <div class="form-group">
+        <label>🔢 現在の距離計（ODO）</label>
+        <input type="number" id="current-odo" min="0" placeholder="例：24850（今のODOメーター）" />
+      </div>
+      <button type="button" class="btn-secondary" id="btn-save-current-odo">現在ODOを保存</button>
+      <div class="sync-health" id="current-odo-status">現在ODOを入れると、交換後kmをより正確に表示します。</div>
+    </div>
     <div class="card">
       <div class="form-group">
         <label>🔧 メンテナンス内容</label>
@@ -1001,6 +1152,12 @@
   </div>
 </div>
 
+<nav class="bottom-nav" aria-label="メインナビゲーション">
+  <button class="tab-btn active" data-tab-target="add">✏️ 追加</button>
+  <button class="tab-btn" data-tab-target="list">📖 記録</button>
+  <button class="tab-btn" data-tab-target="maintenance">🔧 メンテ</button>
+</nav>
+
 <!-- 写真モーダル -->
 <div class="modal" id="modal">
   <span class="modal-close">✕</span>
@@ -1035,6 +1192,10 @@
   const MAINT_STORAGE = 'touring_maintenance';
   const MAINT_SYNC_RECORD_PREFIX = 'maintenance:';
   const SYNC_PENDING_STORAGE = 'touring_sync_pending';
+  const CURRENT_ODO_STORAGE = 'touring_current_odo';
+  const LAST_EXPORT_STORAGE = 'touring_last_export_at';
+  const LAST_IMPORT_STORAGE = 'touring_last_import_at';
+  const APP_VERSION = '2026.06.14-1';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -1976,6 +2137,7 @@
 
     resetForm();
     queueAutoSync();
+    updateBackupHealth();
 
     showToast(wasEditing ? '✅ 記録を更新しました！' : '✅ 記録を保存しました！');
     setTimeout(() => switchTab('list'), 800);
@@ -2120,10 +2282,110 @@
     if (!el) return;
     if (text) {
       el.textContent = text;
+      updateBackupHealth();
       return;
     }
     const { apiUrl, syncKey } = getSyncSettings();
     el.textContent = apiUrl && syncKey ? (getSyncPendingStamp() ? '同期待ち' : '設定済み') : '未設定';
+    updateBackupHealth();
+  }
+
+  function formatDateTimeShort(value) {
+    const time = Number(value || 0);
+    if (!time) return '未実行';
+    const date = new Date(time);
+    if (Number.isNaN(date.getTime())) return '未実行';
+    return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function updateBackupHealth() {
+    const el = document.getElementById('backup-health');
+    if (!el) return;
+    const { apiUrl, syncKey } = getSyncSettings();
+    const pending = getSyncPendingStamp();
+    const records = getRecords().length;
+    const maintenance = getMaintenance().length;
+    const lastExport = Number(getStoredValue(LAST_EXPORT_STORAGE) || 0);
+    const lastImport = Number(getStoredValue(LAST_IMPORT_STORAGE) || 0);
+    let level = 'warn';
+    let lead = '書き出し推奨';
+    if (apiUrl && syncKey && !pending) {
+      level = 'good';
+      lead = '同期設定済み';
+    } else if (pending) {
+      level = navigator.onLine ? 'warn' : 'danger';
+      lead = navigator.onLine ? '未同期あり' : 'オフライン同期待ち';
+    }
+    el.className = `sync-health ${level}`;
+    el.textContent = `${lead} / 記録${records}件・メンテ${maintenance}件 / 最終書き出し ${formatDateTimeShort(lastExport)} / 最終読み込み ${formatDateTimeShort(lastImport)}`;
+  }
+
+  function updateAppVersionStatus(text = '') {
+    const el = document.getElementById('app-update-status');
+    if (!el) return;
+    el.textContent = text || `アプリ版 ${APP_VERSION}`;
+  }
+
+  async function refreshAppShell() {
+    updateAppVersionStatus('キャッシュを更新中…');
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(reg => reg.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key)));
+      }
+      const url = new URL(location.href);
+      url.searchParams.set('v', Date.now());
+      location.replace(url.toString());
+    } catch (e) {
+      updateAppVersionStatus('更新確認に失敗しました');
+      showError(e.message || '更新確認に失敗しました');
+    }
+  }
+
+  function getCurrentOdoSetting() {
+    return safeNumber(getStoredValue(CURRENT_ODO_STORAGE));
+  }
+
+  function initCurrentOdoControl() {
+    const input = document.getElementById('current-odo');
+    if (input) input.value = getCurrentOdoSetting() || '';
+    updateCurrentOdoStatus();
+  }
+
+  function saveCurrentOdoSetting() {
+    const input = document.getElementById('current-odo');
+    const odo = safeNumber(input?.value);
+    if (!odo) {
+      setStoredValue(CURRENT_ODO_STORAGE, '');
+      showToast('現在ODOを削除しました');
+    } else {
+      setStoredValue(CURRENT_ODO_STORAGE, String(odo));
+      showToast('現在ODOを保存しました');
+    }
+    updateCurrentOdoStatus();
+    renderMaintenance();
+  }
+
+  function updateCurrentOdoStatus(currentOdo = null, inferredOdo = null) {
+    const el = document.getElementById('current-odo-status');
+    if (!el) return;
+    const manual = getCurrentOdoSetting();
+    if (manual) {
+      el.className = 'sync-health good';
+      el.textContent = `現在ODO ${manual.toLocaleString()} km を基準に表示中`;
+      return;
+    }
+    if (currentOdo) {
+      el.className = 'sync-health warn';
+      el.textContent = `メンテ記録から推定ODO ${Math.round(currentOdo).toLocaleString()} km で表示中`;
+      return;
+    }
+    el.className = 'sync-health warn';
+    el.textContent = '現在ODOを入れると、交換後kmをより正確に表示します。';
   }
 
   function initRoutingControls() {
@@ -2396,6 +2658,8 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setStoredValue(LAST_EXPORT_STORAGE, String(Date.now()));
+    updateBackupHealth();
     showToast('📦 記録を書き出しました');
   }
 
@@ -2431,6 +2695,8 @@
 
       renderList();
       queueAutoSync();
+      setStoredValue(LAST_IMPORT_STORAGE, String(Date.now()));
+      updateBackupHealth();
       showToast(`📥 記録を読み込みました（${mergedRecords.length}件）`);
     } catch (e) {
       showError(e.message);
@@ -2504,6 +2770,7 @@
       renderList();
       if (document.getElementById('tab-maintenance').style.display !== 'none') renderMaintenance();
       updateSyncStatus(`同期済み 記録${mergedRecords.length}件 / メンテ${mergedMaintenance.length}件`);
+      updateBackupHealth();
       if (getSyncPendingStamp() > startedAt) {
         // 同期中に入った変更を続けて送る
         setTimeout(queueAutoSync, 100);
@@ -2631,13 +2898,14 @@
       const safeRating = clampInt(r.rating, 0, 5);
       const recordId = String(r.id || '');
       const photos = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
+      const detailsLabel = photos.length ? `詳細・写真を見る（${photos.length}枚）` : '経路・詳細を見る';
       return `
       <div class="record-card">
         <div class="record-header">
           <div class="record-title">${r.title ? escape(r.title) : `📍 ${escape(r.to)}`}</div>
           <div class="record-date">${escape(formatDateRange(r))}</div>
         </div>
-        ${renderRecordRoute(r, bikeKm)}
+        <div class="record-compact-route">${renderCompactRoute(r)}</div>
         <div class="record-meta">
           ${bikeKm  ? `<span>🏍️ ${Math.round(bikeKm).toLocaleString()} km</span>` : ''}
           ${ferryKm ? `<span>⛴️ ${Math.round(ferryKm).toLocaleString()} km</span>` : ''}
@@ -2647,12 +2915,19 @@
           ${bikeKm && fuel ? `<span>⚡ ${(bikeKm / fuel).toFixed(1)} km/L</span>` : ''}
           <span>${escape(r.weather || '')}</span>
         </div>
-        ${safeRating ? `<div class="record-stars">${'★'.repeat(safeRating)}${'☆'.repeat(5 - safeRating)}</div>` : ''}
-        ${r.memo   ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
-        ${photos.length ? `
-          <div class="record-photos">
-            ${photos.map(p => `<img src="${escapeAttr(p)}" data-modal-src="${escapeAttr(p)}" alt="" />`).join('')}
-          </div>` : ''}
+        <details class="record-details">
+          <summary>${escape(detailsLabel)}</summary>
+          <div class="record-details-body">
+            ${renderRecordRoute(r, bikeKm)}
+            ${safeRating ? `<div class="record-stars">${'★'.repeat(safeRating)}${'☆'.repeat(5 - safeRating)}</div>` : ''}
+            ${r.memo ? `<div class="record-memo">${escape(r.memo)}</div>` : ''}
+            ${photos.length ? `
+              <div class="record-photos">
+                ${photos.map(p => `<img src="${escapeAttr(p)}" data-modal-src="${escapeAttr(p)}" alt="" />`).join('')}
+              </div>` : ''}
+            ${renderRecordCalcBasis(r)}
+          </div>
+        </details>
         <div class="record-actions">
           <button class="btn-gmap-small" data-record-action="map" data-record-id="${escapeAttr(recordId)}">🗺️ Google Mapsで見る</button>
           <button class="btn-gmap-small" data-record-action="edit" data-record-id="${escapeAttr(recordId)}">✏️ 編集</button>
@@ -2660,6 +2935,37 @@
         </div>
       </div>
     `}).join('');
+  }
+
+  function renderCompactRoute(r) {
+    const parts = [];
+    if (r.from) parts.push(`🗺️ ${r.from}`);
+    const stops = normalizeStops(r.stops).filter(s => s.name || s.toName);
+    if (stops.length) {
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      if (first.name) parts.push(first.type === 'ferry' ? `⛴️ ${first.name}` : `🚩 ${first.name}`);
+      if (stops.length > 2) parts.push(`…${stops.length - 2}件`);
+      const lastName = last.toName || last.name;
+      if (lastName && lastName !== first.name) parts.push(last.type === 'ferry' ? `⚓ ${lastName}` : `🚩 ${lastName}`);
+    }
+    if (r.to) parts.push(`📍 ${r.to}`);
+    return escape(parts.filter(Boolean).join(' → ') || '経路未入力');
+  }
+
+  function renderRecordCalcBasis(r) {
+    const items = Array.isArray(r.calcBasis) ? r.calcBasis : [];
+    if (!items.length) return '';
+    return `
+      <div class="record-calc-basis">
+        <div class="record-calc-basis-title">距離計算の根拠</div>
+        ${items.map(item => `
+          <div class="record-calc-basis-row">
+            <div>${escape(item.kind || '')}</div>
+            <div>${escape(item.date ? `${formatShortDate(item.date)} ` : '')}${escape(item.from || '')} → ${escape(item.to || '')}${item.estimated ? '（推定）' : ''}</div>
+            <div class="record-calc-basis-km">${Math.round(safeNumber(item.km)).toLocaleString()} km</div>
+          </div>`).join('')}
+      </div>`;
   }
 
   function routeLink(place, label, className = 'place') {
@@ -2875,6 +3181,8 @@
     document.getElementById('search').addEventListener('input', renderList);
     document.getElementById('btn-save-sync').addEventListener('click', saveSyncSettings);
     document.getElementById('btn-save-routing').addEventListener('click', saveRoutingSettings);
+    document.getElementById('btn-save-current-odo').addEventListener('click', saveCurrentOdoSetting);
+    document.getElementById('btn-refresh-app').addEventListener('click', refreshAppShell);
     document.getElementById('error-dialog-close').addEventListener('click', hideError);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('btn-export-records').addEventListener('click', exportRecords);
@@ -3021,6 +3329,28 @@
     return '🔧';
   }
 
+  function maintenanceKmLimit(type) {
+    const t = String(type || '');
+    if (t.includes('オイル')) return { watch: 3000, due: 5000 };
+    if (t.includes('タイヤ')) return { watch: 8000, due: 12000 };
+    if (t.includes('チェーン')) return { watch: 1500, due: 2500 };
+    if (t.includes('ブレーキ')) return { watch: 8000, due: 12000 };
+    if (t.includes('車検') || t.includes('点検')) return { watch: 10000, due: 24000 };
+    return { watch: 3000, due: 5000 };
+  }
+
+  function maintenanceStatus(type, kmSince) {
+    const limit = maintenanceKmLimit(type);
+    const km = safeNumber(kmSince);
+    if (km >= limit.due) {
+      return { cardClass: 'maint-due', pillClass: 'due', label: '交換時期' };
+    }
+    if (km >= limit.watch) {
+      return { cardClass: 'maint-watch', pillClass: 'watch', label: 'そろそろ' };
+    }
+    return { cardClass: 'maint-ok', pillClass: 'ok', label: 'まだ余裕' };
+  }
+
   // 指定日以降に走ったバイクkm（ツーリング記録から日付ベースで集計）
   function bikeKmSince(dateStr) {
     if (!dateStr) return 0;
@@ -3054,6 +3384,8 @@
   // 現在ODOの推定：実メーターは単調増加なので最大ODOの記録を基準点にし、
   // その実施日以降に走った記録kmを日付ベースで加算する（過去メンテの後入力でも狂わない）
   function estimateCurrentOdo(items) {
+    const manualOdo = getCurrentOdoSetting();
+    if (manualOdo) return manualOdo;
     const anchors = (items || []).map(maintenanceOdoAnchor).filter(Boolean);
     if (!anchors.length) return null;
     anchors.sort((a, b) =>
@@ -3152,6 +3484,7 @@
       String(b.date || '').localeCompare(String(a.date || '')) || (b.createdAt || 0) - (a.createdAt || 0)
     );
     const currentOdo = estimateCurrentOdo(items);
+    updateCurrentOdoStatus(currentOdo);
 
     // 種類ごとの最新記録 → 「交換から○km」カード
     const latestByType = new Map();
@@ -3161,10 +3494,11 @@
     status.innerHTML = latestByType.size === 0 ? '' : `<div class="stats-bar">${
       [...latestByType.values()].map(m => {
         const kmSince = maintenanceKmSince(m, currentOdo);
+        const state = maintenanceStatus(m.type, kmSince);
         return `
-        <div class="stat-box">
+        <div class="stat-box ${state.cardClass}">
           <div class="num">${Math.round(kmSince).toLocaleString()}</div>
-          <div class="lbl">${maintIcon(m.type)} ${escape(m.type)}から km</div>
+          <div class="lbl">${maintIcon(m.type)} ${escape(m.type)}から km<br><span class="maintenance-status-pill ${state.pillClass}">${state.label}</span></div>
         </div>`;
       }).join('')
     }</div>`;
@@ -3177,13 +3511,15 @@
     el.innerHTML = items.map(m => {
       const kmSince = maintenanceKmSince(m, currentOdo);
       const odoBased = safeNumber(m.odoKm) && currentOdo !== null;
+      const state = maintenanceStatus(m.type, kmSince);
       return `
-      <div class="record-card">
+      <div class="record-card ${state.cardClass}">
         <div class="record-header">
           <div class="record-title">${maintIcon(m.type)} ${escape(m.type)}</div>
           <div class="record-date">${escape(formatDate(m.date))}</div>
         </div>
         <div class="record-meta">
+          <span class="maintenance-status-pill ${state.pillClass}">${state.label}</span>
           <span>🏍️ 実施から ${Math.round(kmSince).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}</span>
           ${safeNumber(m.odoKm) ? `<span>🔢 距離計 ${safeNumber(m.odoKm).toLocaleString()} km</span>` : ''}
           ${safeNumber(m.cost) ? `<span>💴 ${safeNumber(m.cost).toLocaleString()} 円</span>` : ''}
@@ -3248,6 +3584,9 @@
   renderDailyDistanceRows([]);
   initSyncControls();
   initRoutingControls();
+  initCurrentOdoControl();
+  updateAppVersionStatus();
+  updateBackupHealth();
   bindEvents();
   resetMaintenanceForm();
   switchTab('add');
