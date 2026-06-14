@@ -28,6 +28,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify CSP script hash matches inline script
+        run: |
+          python3 - <<'PY'
+          import re, hashlib, base64, sys
+          html = open('index.html', 'rb').read()
+          body = re.search(rb'(?<=<script>)(.*?)(?=</script>)', html, re.DOTALL).group(1)
+          calc = base64.b64encode(hashlib.sha256(body).digest()).decode()
+          meta = re.search(rb"sha256-([A-Za-z0-9+/=]+)", html).group(1).decode()
+          ok = True
+          if meta != calc:
+              print(f"::error::index.html CSP hash mismatch: meta={meta} body={calc}")
+              ok = False
+          for f in ('vercel.json', 'netlify.toml'):
+              try:
+                  m = re.search(rb"sha256-([A-Za-z0-9+/=]+)", open(f, 'rb').read()).group(1).decode()
+              except FileNotFoundError:
+                  continue
+              if m != calc:
+                  print(f"::error::{f} CSP hash mismatch: {m} != {calc}")
+                  ok = False
+          if not ok:
+              sys.exit("CSP hash inconsistent. Re-sync index.html / vercel.json / netlify.toml before deploy.")
+          print(f"CSP hash OK: {calc}")
+          PY
+
       - name: Prepare static files
         run: |
           mkdir -p public

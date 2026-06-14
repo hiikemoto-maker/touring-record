@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WhV7t/yXMcdhWPLKr9jy1h3VR2KdnFUgJolRC479ohI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-xwIKVm0ZN8+nqpTCTWsf+BRobpvR/QbRBCEfmfd3pWA=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -2128,11 +2128,15 @@
 
     const list = getRecords();
     const wasEditing = Boolean(editingId);
-    if (wasEditing) {
-      saveRecords(list.map(r => sameId(r.id, editingId) ? record : r));
-    } else {
-      list.unshift(record);
-      saveRecords(list);
+    const saved = wasEditing
+      ? saveRecords(list.map(r => sameId(r.id, editingId) ? record : r))
+      : saveRecords([record, ...list]);
+
+    if (!saved) {
+      // localStorage の容量上限（主に写真）に達したケース。成功と偽らず、
+      // フォーム（入力中の写真含む）を残してユーザーが調整・再保存できるようにする
+      showError('⚠️ 端末の保存容量がいっぱいで保存できませんでした。写真を減らすか、不要な記録を削除してから、もう一度保存してください。');
+      return;
     }
 
     resetForm();
@@ -2185,7 +2189,10 @@
       if (window.localStorage) {
         localStorage.setItem('touring_records', JSON.stringify(records));
       }
-    } catch {}
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function getStoredValue(key) {
