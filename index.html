@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-xwIKVm0ZN8+nqpTCTWsf+BRobpvR/QbRBCEfmfd3pWA=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Mor1iDyz0vHzQXTr1+fV/YKMi2FNtgh0hSx8P/h4Bh0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1082,6 +1082,7 @@
         <button type="button" class="btn-sync" id="btn-clear-legacy-records">旧記録をクリア</button>
       </div>
       <div class="sync-health" id="backup-health">バックアップ状態を確認中…</div>
+      <div class="sync-health" id="storage-meter">保存容量を確認中…</div>
       <div class="app-update-status" id="app-update-status"></div>
       <input id="import-records-file" type="file" accept="application/json,.json" style="display:none;" />
       <div class="sync-header" style="margin-top:0.75rem;">
@@ -2325,6 +2326,28 @@
     }
     el.className = `sync-health ${level}`;
     el.textContent = `${lead} / 記録${records}件・メンテ${maintenance}件 / 最終書き出し ${formatDateTimeShort(lastExport)} / 最終読み込み ${formatDateTimeShort(lastImport)}`;
+    updateStorageMeter();
+  }
+
+  async function updateStorageMeter() {
+    const el = document.getElementById('storage-meter');
+    if (!el) return;
+    if (!navigator.storage || !navigator.storage.estimate) {
+      el.style.display = 'none';
+      return;
+    }
+    try {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      const mb = b => (b / (1024 * 1024)).toFixed(1);
+      const pct = quota ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
+      let level = 'good';
+      if (pct >= 90) level = 'danger';
+      else if (pct >= 75) level = 'warn';
+      el.className = `sync-health ${level}`;
+      el.textContent = `💾 保存使用量 ${mb(usage)}MB / 上限 ${mb(quota)}MB（${pct}%）`;
+    } catch {
+      el.style.display = 'none';
+    }
   }
 
   function updateAppVersionStatus(text = '') {
