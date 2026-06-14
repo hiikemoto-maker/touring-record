@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Mor1iDyz0vHzQXTr1+fV/YKMi2FNtgh0hSx8P/h4Bh0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-QMs89AfCNsn7H61SH4bAK+6G3eSnmDj2TuwXc2oXCfw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -2083,7 +2083,7 @@
   }
 
   // 保存
-  function saveRecord() {
+  async function saveRecord() {
     const title    = document.getElementById('f-title').value.trim();
     const dateFrom = document.getElementById('f-date-from').value;
     const dateTo   = document.getElementById('f-date-to').value;
@@ -2109,6 +2109,8 @@
     const bikeKm = getBikeKm();
     if (dailyDistances.length && bikeKm > 0) setBikeDistanceTotal(bikeKm);
     const finalDistances = getDistances();
+    // 写真はIDBへ退避してref化（IDB不可なら data:URL のまま）
+    const photoRefs = await storePhotos(photoData);
     const record = {
       id: editingId || Date.now(),
       title, dateFrom, dateTo, from, to,
@@ -2122,7 +2124,7 @@
       weather: getDailyWeather().map(d => d.weather).filter(Boolean)[0] || weather,
       rating,
       memo,
-      photos: [...photoData],
+      photos: photoRefs,
       calcBasis: [...lastCalcBasis],
       updatedAt: Date.now()
     };
@@ -2673,7 +2675,11 @@
       app: 'touring-record',
       version: 2,
       exportedAt: new Date().toISOString(),
-      records: prepareLocalRecordsForSync(),
+      records: prepareLocalRecordsForSync().map(r => ({
+        ...r,
+        // バックアップは可搬性のため写真をdata:URLでインライン化する
+        photos: Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc) : []
+      })),
       deletedRecords: Object.entries(getDeletedRecordMap()).map(([id, deletedAt]) => ({ id, deletedAt })),
       maintenance: prepareLocalMaintenanceForSync(),
       deletedMaintenance: Object.entries(getDeletedMaintenanceMap()).map(([id, deletedAt]) => ({ id, deletedAt }))
@@ -2711,6 +2717,8 @@
 
       saveDeletedRecordMap(mergedDeleted);
       saveRecords(mergedRecords);
+      // 読み込んだdata:写真をIDBへ退避してref化（localStorageを溢れさせない）
+      await migrateLegacyPhotos();
 
       // メンテナンス記録もツーリング記録と同じく更新日時と削除履歴でマージする
       const importedMaint = Array.isArray(data.maintenance) ? data.maintenance : [];
@@ -2855,7 +2863,7 @@
 
     document.getElementById('stop-list').innerHTML = '';
     normalizeStops(r.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle, s.distanceKm, s.date));
-    photoData = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
+    photoData = Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
     renderPhotoPreview();
     setMainRating(r.rating || 0);
     updateDays();
@@ -2927,7 +2935,7 @@
       const fuelCost = safeNumber(r.fuelCost);
       const safeRating = clampInt(r.rating, 0, 5);
       const recordId = String(r.id || '');
-      const photos = Array.isArray(r.photos) ? r.photos.filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
+      const photos = Array.isArray(r.photos) ? r.photos.map(photoSrc).filter(isSafeImageSrc).slice(0, MAX_PHOTOS) : [];
       const detailsLabel = photos.length ? `詳細・写真を見る（${photos.length}枚）` : '経路・詳細を見る';
       return `
       <div class="record-card">
@@ -3193,6 +3201,116 @@
   }
   function isSafeImageSrc(src) {
     return /^data:image\/(?:jpeg|jpg|png|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(String(src || ''));
+  }
+
+  // ===== 写真ストア（IndexedDB） =====
+  // 容量の大きい写真はlocalStorageを溢れさせるため、IDBへ保存しlocalStorageには
+  // 軽い参照(idbphoto:<id>)だけ残す。表示・編集・書き出しは起動時に読み込む
+  // メモリキャッシュ(photoCache)から同期的に解決する。IDB非対応や書き込み失敗時は
+  // data:URLのまま扱い、後方互換と「写真を絶対に失わない」を保つ。
+  const PHOTO_DB_NAME = 'touring-photos';
+  const PHOTO_STORE = 'photos';
+  const PHOTO_REF_PREFIX = 'idbphoto:';
+  const photoCache = new Map();
+  let photoDBPromise = null;
+
+  function isPhotoRef(s) { return typeof s === 'string' && s.startsWith(PHOTO_REF_PREFIX); }
+  function isStorablePhoto(s) { return isPhotoRef(s) || isSafeImageSrc(s); }
+  // 表示用に data:URL へ解決（同期）。未解決のrefは空文字を返す。
+  function photoSrc(s) {
+    if (isPhotoRef(s)) return photoCache.get(s) || '';
+    return isSafeImageSrc(s) ? s : '';
+  }
+
+  function openPhotoDB() {
+    if (photoDBPromise) return photoDBPromise;
+    photoDBPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('IndexedDB非対応')); return; }
+      const req = indexedDB.open(PHOTO_DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(PHOTO_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    photoDBPromise.catch(() => { photoDBPromise = null; });
+    return photoDBPromise;
+  }
+
+  function idbGetAllPhotos() {
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE, 'readonly');
+      const store = tx.objectStore(PHOTO_STORE);
+      const keysReq = store.getAllKeys();
+      const valsReq = store.getAll();
+      tx.oncomplete = () => resolve(keysReq.result.map((id, i) => ({ id, data: valsReq.result[i] })));
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbPutPhoto(dataUrl) {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE, 'readwrite');
+      tx.objectStore(PHOTO_STORE).put(dataUrl, id);
+      tx.oncomplete = () => resolve(PHOTO_REF_PREFIX + id);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    }));
+  }
+
+  // data:URL を IDB へ保存して ref を返す。失敗時は data:URL のまま返す（無損失）。
+  async function storePhoto(src) {
+    if (isPhotoRef(src)) return src;
+    if (!isSafeImageSrc(src)) return null;
+    try {
+      const ref = await idbPutPhoto(src);
+      photoCache.set(ref, src);
+      return ref;
+    } catch {
+      return src;
+    }
+  }
+  async function storePhotos(list) {
+    const out = [];
+    for (const p of (list || [])) {
+      const ref = await storePhoto(p);
+      if (ref) out.push(ref);
+    }
+    return out;
+  }
+
+  // localStorage内のレガシーdata:写真をIDBへ退避してrefに置き換える（冪等・無損失）
+  async function migrateLegacyPhotos() {
+    if (!window.indexedDB) return;
+    const records = getRecords();
+    let changed = false;
+    for (const r of records) {
+      if (!Array.isArray(r.photos) || !r.photos.length) continue;
+      const next = [];
+      for (const p of r.photos) {
+        if (isPhotoRef(p)) { next.push(p); continue; }
+        if (!isSafeImageSrc(p)) continue;
+        try {
+          const ref = await idbPutPhoto(p);
+          photoCache.set(ref, p);
+          next.push(ref);
+          changed = true;
+        } catch {
+          next.push(p);
+        }
+      }
+      r.photos = next;
+    }
+    if (changed) saveRecords(records);
+  }
+
+  async function initPhotoStore() {
+    if (!window.indexedDB) return;
+    try {
+      for (const { id, data } of await idbGetAllPhotos()) {
+        if (isSafeImageSrc(data)) photoCache.set(PHOTO_REF_PREFIX + id, data);
+      }
+    } catch {}
+    await migrateLegacyPhotos();
   }
 
   function bindEvents() {
@@ -3621,6 +3739,8 @@
   resetMaintenanceForm();
   switchTab('add');
   retryPendingSync();
+  // 写真キャッシュの読み込み＋レガシー写真のIDB移行。完了後に一覧を再描画する
+  initPhotoStore().then(renderList).catch(() => {});
 
   // PWA: Service Worker登録（https または localhost のみ。file:// では登録しない）
   if ('serviceWorker' in navigator &&
