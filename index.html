@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-e3Q58D2C7SvZ+BR3fvrx4c8QcImnKYumAKuQsoYtbnw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Lmvt3CCgCaCRjnBXF7LfLSajMm5OhksW2BN4Hye9jGo=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1094,6 +1094,7 @@
         <button type="button" class="btn-sync" id="btn-export-records">記録を書き出し</button>
         <button type="button" class="btn-sync" id="btn-import-records">記録を読み込み</button>
         <button type="button" class="btn-sync" id="btn-refresh-app">最新版を確認</button>
+        <button type="button" class="btn-sync" id="btn-clean-unused-photos">未使用写真を整理</button>
         <button type="button" class="btn-sync" id="btn-clear-legacy-records">旧記録をクリア</button>
       </div>
       <div class="sync-health" id="backup-health">バックアップ状態を確認中…</div>
@@ -1211,7 +1212,7 @@
   const CURRENT_ODO_STORAGE = 'touring_current_odo';
   const LAST_EXPORT_STORAGE = 'touring_last_export_at';
   const LAST_IMPORT_STORAGE = 'touring_last_import_at';
-  const APP_VERSION = '2026.06.14-2';
+  const APP_VERSION = '2026.06.15-1';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -2395,21 +2396,104 @@
   async function updateStorageMeter() {
     const el = document.getElementById('storage-meter');
     if (!el) return;
-    if (!navigator.storage || !navigator.storage.estimate) {
-      el.style.display = 'none';
-      return;
-    }
     try {
-      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
-      const mb = b => (b / (1024 * 1024)).toFixed(1);
+      const storageEstimate = navigator.storage && navigator.storage.estimate
+        ? await navigator.storage.estimate()
+        : {};
+      const { usage = 0, quota = 0 } = storageEstimate;
+      const localBytes = estimateAppLocalStorageBytes();
+      const inlinePhotos = estimateInlinePhotoStats();
+      const photoStats = await estimatePhotoStoreStats();
+      const activePhotoBytes = inlinePhotos.bytes + photoStats.usedBytes;
+      const activePhotoCount = inlinePhotos.count + photoStats.usedCount;
       const pct = quota ? Math.min(100, Math.round((usage / quota) * 100)) : 0;
       let level = 'good';
       if (pct >= 90) level = 'danger';
-      else if (pct >= 75) level = 'warn';
+      else if (pct >= 75 || photoStats.unusedBytes > 0) level = 'warn';
+      const totalText = quota
+        ? ` / ブラウザ総使用量 ${formatBytes(usage)} / 上限 ${formatBytes(quota)}（${pct}%・アプリ本体キャッシュ含む）`
+        : '';
+      const unusedText = photoStats.unusedCount
+        ? ` / 未使用写真 ${photoStats.unusedCount}枚 ${formatBytes(photoStats.unusedBytes)}`
+        : '';
       el.className = `sync-health ${level}`;
-      el.textContent = `💾 保存使用量 ${mb(usage)}MB / 上限 ${mb(quota)}MB（${pct}%）`;
+      el.textContent = `💾 写真 ${activePhotoCount}枚 ${formatBytes(activePhotoBytes)} / 記録データ ${formatBytes(localBytes)}${totalText}${unusedText}`;
     } catch {
-      el.style.display = 'none';
+      el.className = 'sync-health warn';
+      el.textContent = '💾 保存容量を確認できませんでした';
+    }
+  }
+
+  function formatBytes(bytes) {
+    const size = Math.max(0, Number(bytes) || 0);
+    if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+    if (size >= 1024) return `${Math.round(size / 1024)}KB`;
+    return `${Math.round(size)}B`;
+  }
+
+  function textBytes(text) {
+    return new Blob([String(text || '')]).size;
+  }
+
+  function estimateAppLocalStorageBytes() {
+    try {
+      if (!window.localStorage) return 0;
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('touring_')) continue;
+        total += textBytes(key) + textBytes(localStorage.getItem(key) || '');
+      }
+      return total;
+    } catch {
+      return 0;
+    }
+  }
+
+  function collectRecordPhotos(records = getRecords()) {
+    const refs = new Set();
+    const inline = [];
+    const add = photo => {
+      if (isPhotoRef(photo)) refs.add(photo);
+      else if (isSafeImageSrc(photo)) inline.push(photo);
+    };
+    (records || []).forEach(record => {
+      if (Array.isArray(record.photos)) record.photos.forEach(add);
+      normalizeStops(record.stops).forEach(stop => {
+        if (Array.isArray(stop.photos)) stop.photos.forEach(add);
+      });
+    });
+    return { refs, inline };
+  }
+
+  function estimateInlinePhotoStats() {
+    const { inline } = collectRecordPhotos();
+    return {
+      count: inline.length,
+      bytes: inline.reduce((sum, photo) => sum + textBytes(photo), 0)
+    };
+  }
+
+  async function estimatePhotoStoreStats() {
+    const empty = { usedCount: 0, usedBytes: 0, unusedCount: 0, unusedBytes: 0 };
+    if (!window.indexedDB) return empty;
+    try {
+      const { refs } = collectRecordPhotos();
+      const photos = await idbGetAllPhotos();
+      return photos.reduce((stats, item) => {
+        const ref = PHOTO_REF_PREFIX + item.id;
+        const bytes = textBytes(item.data);
+        if (refs.has(ref)) {
+          stats.usedCount += 1;
+          stats.usedBytes += bytes;
+        } else {
+          stats.unusedCount += 1;
+          stats.unusedBytes += bytes;
+        }
+        return stats;
+      }, { ...empty });
+    } catch {
+      return empty;
     }
   }
 
@@ -3319,6 +3403,19 @@
     }));
   }
 
+  function idbDeletePhotos(ids) {
+    const targets = (ids || []).filter(Boolean);
+    if (!targets.length) return Promise.resolve(0);
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE, 'readwrite');
+      const store = tx.objectStore(PHOTO_STORE);
+      targets.forEach(id => store.delete(id));
+      tx.oncomplete = () => resolve(targets.length);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    }));
+  }
+
   function idbPutPhoto(dataUrl) {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     return openPhotoDB().then(db => new Promise((resolve, reject) => {
@@ -3411,6 +3508,28 @@
     return photoStoreReady;
   }
 
+  async function cleanupUnusedPhotos() {
+    if (!window.indexedDB) {
+      showToast('このブラウザでは写真整理が使えません');
+      return;
+    }
+    await ensurePhotoStoreReady();
+    const { refs } = collectRecordPhotos();
+    const photos = await idbGetAllPhotos();
+    const unused = photos.filter(item => !refs.has(PHOTO_REF_PREFIX + item.id));
+    if (!unused.length) {
+      showToast('整理できる未使用写真はありません');
+      updateStorageMeter();
+      return;
+    }
+    if (!confirm(`記録で使われていない写真データ ${unused.length}枚を整理します。記録に表示中の写真は残します。よろしいですか？`)) return;
+    await idbDeletePhotos(unused.map(item => item.id));
+    unused.forEach(item => photoCache.delete(PHOTO_REF_PREFIX + item.id));
+    await updateStorageMeter();
+    renderList();
+    showToast(`未使用写真 ${unused.length}枚を整理しました`);
+  }
+
   function bindEvents() {
     document.querySelectorAll('[data-tab-target]').forEach(btn => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tabTarget));
@@ -3429,6 +3548,7 @@
     document.getElementById('btn-save-routing').addEventListener('click', saveRoutingSettings);
     document.getElementById('btn-save-current-odo').addEventListener('click', saveCurrentOdoSetting);
     document.getElementById('btn-refresh-app').addEventListener('click', refreshAppShell);
+    document.getElementById('btn-clean-unused-photos').addEventListener('click', () => cleanupUnusedPhotos().catch(e => showError(e.message || '写真整理に失敗しました')));
     document.getElementById('error-dialog-close').addEventListener('click', hideError);
     document.getElementById('btn-sync-now').addEventListener('click', () => syncNow());
     document.getElementById('btn-export-records').addEventListener('click', exportRecords);
