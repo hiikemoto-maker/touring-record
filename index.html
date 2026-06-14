@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-9ZgA8jE2UxpiZDukGF9skd6d4/xHrYDIlUqvJV/c/L4=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-JLG5SqpqzJK/slv8/bui5gQ4Xh+PNOmYkCJ5M4DVH8s=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -2191,16 +2191,23 @@
       updatedAt: Date.now()
     };
 
-    const list = getRecords();
     const wasEditing = Boolean(editingId);
-    const saved = wasEditing
-      ? saveRecords(list.map(r => sameId(r.id, editingId) ? record : r))
-      : saveRecords([record, ...list]);
-
+    // 保存（毎回最新のlocalStorageを読み直してから書き込む）
+    const persistRecord = () => {
+      const list = getRecords();
+      return wasEditing
+        ? saveRecords(list.map(r => sameId(r.id, editingId) ? record : r))
+        : saveRecords([record, ...list]);
+    };
+    let saved = persistRecord();
     if (!saved) {
-      // localStorage の容量上限（主に写真）に達したケース。成功と偽らず、
-      // フォーム（入力中の写真含む）を残してユーザーが調整・再保存できるようにする
-      showError('⚠️ 端末の保存容量がいっぱいで保存できませんでした。写真を減らすか、不要な記録を削除してから、もう一度保存してください。');
+      // 容量オーバー時は、旧記録の写真をIDBへ退避してlocalStorageを空けてから保存し直す（自己修復）
+      await migrateLegacyPhotos();
+      saved = persistRecord();
+    }
+    if (!saved) {
+      // 移行しても入りきらない＝本当に容量不足。成功と偽らず、フォーム（入力中の写真含む）を残す
+      showError('⚠️ 端末の保存容量がいっぱいで保存できませんでした。「記録を書き出し」でバックアップしてから、不要な記録や写真を減らして、もう一度お試しください。');
       return;
     }
 
