@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Lmvt3CCgCaCRjnBXF7LfLSajMm5OhksW2BN4Hye9jGo=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-9ZgA8jE2UxpiZDukGF9skd6d4/xHrYDIlUqvJV/c/L4=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1212,7 +1212,7 @@
   const CURRENT_ODO_STORAGE = 'touring_current_odo';
   const LAST_EXPORT_STORAGE = 'touring_last_export_at';
   const LAST_IMPORT_STORAGE = 'touring_last_import_at';
-  const APP_VERSION = '2026.06.15-1';
+  const APP_VERSION = '2026.06.15-2';
   let syncInProgress = false;
 
   // 経由地・フェリー区間
@@ -1279,7 +1279,7 @@
         <button type="button" class="btn-remove-stop-photo" data-remove-stop-photo="${i}" title="削除">×</button>
       </span>` : `
       <span class="stop-photo-thumb">
-        <span style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:6px;background:#0f3460;color:#aaa;font-size:0.7rem;">読込中</span>
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:6px;background:#0f3460;color:#aaa;font-size:0.68rem;text-align:center;line-height:1.25;">端末に<br>写真なし</span>
         <button type="button" class="btn-remove-stop-photo" data-remove-stop-photo="${i}" title="削除">×</button>
       </span>`;
     }).join('');
@@ -2134,7 +2134,7 @@
         return;
       }
       const placeholder = document.createElement('span');
-      placeholder.textContent = '写真を読み込み中…';
+      placeholder.textContent = isPhotoRef(photo) ? 'この端末に写真なし' : '写真を読み込み中…';
       placeholder.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:100px;height:100px;border-radius:8px;background:#0f3460;color:#aaa;font-size:0.8rem;';
       preview.appendChild(placeholder);
     });
@@ -2627,7 +2627,34 @@
     const photos = Array.isArray(record.photos) ? record.photos : [];
     safe.photos = [];
     safe.photoCount = photos.length;
+    safe.stops = stripStopPhotosForCloud(record.stops);
     return safe;
+  }
+
+  function stripStopPhotosForCloud(stops) {
+    return (stops || []).map(stop => {
+      if (!stop || typeof stop !== 'object') return stop;
+      const photos = Array.isArray(stop.photos) ? stop.photos : [];
+      return {
+        ...stop,
+        photos: [],
+        photoCount: photos.length
+      };
+    });
+  }
+
+  function mergeStopsPreservingLocalPhotos(remoteStops, localStops) {
+    if (!Array.isArray(remoteStops)) return remoteStops;
+    const localList = Array.isArray(localStops) ? localStops : [];
+    return remoteStops.map((stop, index) => {
+      if (!stop || typeof stop !== 'object') return stop;
+      const remotePhotos = Array.isArray(stop.photos) ? stop.photos : [];
+      const remoteInlinePhotos = remotePhotos.filter(isSafeImageSrc);
+      if (remoteInlinePhotos.length) return { ...stop, photos: remoteInlinePhotos };
+      const local = localList[index];
+      const localPhotos = Array.isArray(local?.photos) ? local.photos.filter(isStorablePhoto) : [];
+      return localPhotos.length ? { ...stop, photos: localPhotos } : stop;
+    });
   }
 
   function maintenanceSyncRecordId(id) {
@@ -2744,9 +2771,11 @@
         const local = localById.get(id);
         const localPhotos = Array.isArray(local?.photos) ? local.photos : [];
         const remotePhotos = Array.isArray(record.photos) ? record.photos : [];
+        const remoteInlinePhotos = remotePhotos.filter(isSafeImageSrc);
         byId.set(id, {
           ...record,
-          photos: remotePhotos.length ? remotePhotos : localPhotos
+          photos: remoteInlinePhotos.length ? remoteInlinePhotos : localPhotos,
+          stops: mergeStopsPreservingLocalPhotos(record.stops, local?.stops)
         });
       }
     });
