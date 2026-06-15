@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-ctiOsKvg+Dk7i9k1qK9fjCogEM3rdMK0qibAc30ePBk=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-FkACV1yo9Qt7In3MNdrMNWouVtpQG9OjhG1zXCCzaMg=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -3433,7 +3433,14 @@
       if (!window.indexedDB) { reject(new Error('IndexedDB非対応')); return; }
       const req = indexedDB.open(PHOTO_DB_NAME, 1);
       req.onupgradeneeded = () => req.result.createObjectStore(PHOTO_STORE);
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // iOSはPWAのバックグラウンド化やメモリ逼迫で接続を勝手に閉じる。
+        // 閉じたらキャッシュを破棄し、次回openで開き直せるようにする。
+        db.onclose = () => { photoDBPromise = null; };
+        db.onversionchange = () => { try { db.close(); } catch {} photoDBPromise = null; };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
       req.onblocked = () => reject(new Error('IndexedDB blocked'));
     }), 6000, 'IndexedDB open');
@@ -3441,8 +3448,21 @@
     return photoDBPromise;
   }
 
+  // 接続が閉じかけ（"The database connection is closing" 等）で失敗したら、
+  // キャッシュした接続を捨てて開き直し、1回だけ再試行する。
+  function withFreshDB(op, retried) {
+    return openPhotoDB().then(op).catch(err => {
+      const msg = String((err && (err.name + ' ' + err.message)) || err);
+      if (!retried && /clos|InvalidState|InvalidAccess|TransactionInactive|NotFound/i.test(msg)) {
+        photoDBPromise = null;
+        return withFreshDB(op, true);
+      }
+      throw err;
+    });
+  }
+
   function idbGetAllPhotos() {
-    return openPhotoDB().then(db => withTimeout(new Promise((resolve, reject) => {
+    return withFreshDB(db => withTimeout(new Promise((resolve, reject) => {
       const tx = db.transaction(PHOTO_STORE, 'readonly');
       const store = tx.objectStore(PHOTO_STORE);
       const keysReq = store.getAllKeys();
@@ -3456,7 +3476,7 @@
   function idbDeletePhotos(ids) {
     const targets = (ids || []).filter(Boolean);
     if (!targets.length) return Promise.resolve(0);
-    return openPhotoDB().then(db => withTimeout(new Promise((resolve, reject) => {
+    return withFreshDB(db => withTimeout(new Promise((resolve, reject) => {
       const tx = db.transaction(PHOTO_STORE, 'readwrite');
       const store = tx.objectStore(PHOTO_STORE);
       targets.forEach(id => store.delete(id));
@@ -3468,7 +3488,7 @@
 
   function idbPutPhoto(dataUrl) {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    return openPhotoDB().then(db => withTimeout(new Promise((resolve, reject) => {
+    return withFreshDB(db => withTimeout(new Promise((resolve, reject) => {
       const tx = db.transaction(PHOTO_STORE, 'readwrite');
       tx.objectStore(PHOTO_STORE).put(dataUrl, id);
       tx.oncomplete = () => resolve(PHOTO_REF_PREFIX + id);
