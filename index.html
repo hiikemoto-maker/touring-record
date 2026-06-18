@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WcZzBbP3qbZSX0Ygj5IVrc3G3DAqS7JRCCnzPb0EYAs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-cMByyW13xcq1JOiKiU3fv3pIS3RLfpJ6DaLFprAN4/s=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -3981,13 +3981,19 @@
     const latestByType = new Map();
     items.forEach(m => { if (!latestByType.has(m.type)) latestByType.set(m.type, m); });
 
-    // 各記録の「次の（より新しい）同種交換」を引く表。過去（交換済み）記録の判定に使う。
-    // items は新しい順なので、同種で直前に見た記録がその記録より新しい＝successor。
+    // 各記録の「次の（より新しい）同種交換」＝successor、「前回（より古い）同種交換」＝predecessor。
+    // items は新しい順。successor判定で「最新かどうか」、predecessorで「前回からの距離」を出す。
     const successorOf = new Map();
     const seenByType = new Map();
     items.forEach(m => {
       if (seenByType.has(m.type)) successorOf.set(m, seenByType.get(m.type));
       seenByType.set(m.type, m);
+    });
+    const predecessorOf = new Map();
+    const prevByType = new Map();
+    [...items].reverse().forEach(m => {
+      if (prevByType.has(m.type)) predecessorOf.set(m, prevByType.get(m.type));
+      prevByType.set(m.type, m);
     });
 
     const status = document.getElementById('maint-status');
@@ -4009,20 +4015,31 @@
       return;
     }
     el.innerHTML = items.map(m => {
-      const successor = successorOf.get(m);
+      const predecessor = predecessorOf.get(m);
+      const isLatestOfType = !successorOf.get(m);
       const odoBased = safeNumber(m.odoKm) && currentOdo !== null;
-      // カテゴリー別に「まだ余裕／そろそろ／交換時期」を判定する距離：
-      // 最新記録は実施から今までの距離、過去記録は次の交換までに走った間隔（その時の達成距離）
-      let kmForStatus, kmLine;
-      if (successor) {
-        const interval = maintenanceIntervalKm(m, successor);
-        kmForStatus = interval !== null ? interval : maintenanceKmSince(m, currentOdo);
-        kmLine = interval !== null ? `🏍️ ${Math.round(interval).toLocaleString()} km 走行で交換` : '';
-      } else {
+      // 判定距離は「前回の同種交換からこの交換までの距離」。
+      // 前回がある記録 → 前回からの間隔で まだ余裕／そろそろ／交換時期。
+      // 前回がない（初回）記録 → 単独なら今までの距離でライブ判定、後続があれば「初回交換」。
+      let kmForStatus = null, kmLine = '', neutralLabel = '';
+      if (predecessor) {
+        const interval = maintenanceIntervalKm(predecessor, m);
+        if (interval !== null) {
+          kmForStatus = interval;
+          kmLine = `🏍️ 前回から ${Math.round(interval).toLocaleString()} km 走行で交換`;
+        } else {
+          neutralLabel = '記録';
+        }
+      } else if (isLatestOfType) {
         kmForStatus = maintenanceKmSince(m, currentOdo);
         kmLine = `🏍️ 実施から ${Math.round(kmForStatus).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}`;
+      } else {
+        neutralLabel = '初回';
+        kmLine = '🏍️ 初回交換（前回の記録なし）';
       }
-      const state = maintenanceStatus(m.type, kmForStatus);
+      const state = kmForStatus !== null
+        ? maintenanceStatus(m.type, kmForStatus)
+        : { cardClass: 'maint-done', pillClass: 'done', label: neutralLabel || '記録' };
       return `
       <div class="record-card ${state.cardClass}">
         <div class="record-header">
