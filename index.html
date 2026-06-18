@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-rAD8Z1L9OnaXlYkaMrv6W9s9ADrnNENM350AEyQQjRs=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Jz98zZhqjmArQara3QfvKPsWvy/sAZnnvf2quD9f3JI=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -776,6 +776,8 @@
     .maintenance-status-pill.ok { background: rgba(59,178,115,0.18); color: #9effc2; }
     .maintenance-status-pill.watch { background: rgba(245,166,35,0.18); color: #ffd98f; }
     .maintenance-status-pill.due { background: rgba(233,69,96,0.18); color: #ffb6c4; }
+    .maintenance-status-pill.done { background: rgba(150,160,180,0.18); color: #c2cad8; }
+    .record-card.maint-done { border-left-color: #6b7488; }
     .stat-box.maint-ok { border: 1px solid rgba(59,178,115,0.65); }
     .stat-box.maint-watch { border: 1px solid rgba(245,166,35,0.75); }
     .stat-box.maint-due { border: 1px solid rgba(233,69,96,0.85); }
@@ -3959,6 +3961,15 @@
     showToast('🗑️ 削除しました');
   }
 
+  // 過去記録が「次の同種交換」までに走った距離（その時どれだけ持ったか）
+  function maintenanceIntervalKm(item, successor) {
+    const a = safeNumber(item?.odoKm), b = safeNumber(successor?.odoKm);
+    if (a && b && b >= a) return b - a;
+    const d1 = normalizeDateValue(item?.date), d2 = normalizeDateValue(successor?.date);
+    if (d1 && d2) return Math.max(0, bikeKmSince(d1) - bikeKmSince(d2));
+    return null;
+  }
+
   function renderMaintenance() {
     const items = getMaintenance().slice().sort((a, b) =>
       String(b.date || '').localeCompare(String(a.date || '')) || (b.createdAt || 0) - (a.createdAt || 0)
@@ -3969,6 +3980,15 @@
     // 種類ごとの最新記録 → 「交換から○km」カード
     const latestByType = new Map();
     items.forEach(m => { if (!latestByType.has(m.type)) latestByType.set(m.type, m); });
+
+    // 各記録の「次の（より新しい）同種交換」を引く表。過去（交換済み）記録の判定に使う。
+    // items は新しい順なので、同種で直前に見た記録がその記録より新しい＝successor。
+    const successorOf = new Map();
+    const seenByType = new Map();
+    items.forEach(m => {
+      if (seenByType.has(m.type)) successorOf.set(m, seenByType.get(m.type));
+      seenByType.set(m.type, m);
+    });
 
     const status = document.getElementById('maint-status');
     status.innerHTML = latestByType.size === 0 ? '' : `<div class="stats-bar">${
@@ -3989,18 +4009,34 @@
       return;
     }
     el.innerHTML = items.map(m => {
-      const kmSince = maintenanceKmSince(m, currentOdo);
+      const successor = successorOf.get(m);
       const odoBased = safeNumber(m.odoKm) && currentOdo !== null;
-      const state = maintenanceStatus(m.type, kmSince);
+      let cardClass, pillClass, pillLabel, kmLine;
+      if (successor) {
+        // 既に次の同種交換が済んでいる過去記録：未到来の警告ではなく「この時どれだけ持ったか」を出す
+        const interval = maintenanceIntervalKm(m, successor);
+        cardClass = 'maint-done';
+        pillClass = 'done';
+        pillLabel = '交換済み';
+        kmLine = interval !== null ? `🏍️ 次の交換まで ${Math.round(interval).toLocaleString()} km 走行` : '';
+      } else {
+        // そのカテゴリーの最新記録：前回からの距離で まだ余裕／そろそろ／交換時期 を出す
+        const kmSince = maintenanceKmSince(m, currentOdo);
+        const state = maintenanceStatus(m.type, kmSince);
+        cardClass = state.cardClass;
+        pillClass = state.pillClass;
+        pillLabel = state.label;
+        kmLine = `🏍️ 実施から ${Math.round(kmSince).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}`;
+      }
       return `
-      <div class="record-card ${state.cardClass}">
+      <div class="record-card ${cardClass}">
         <div class="record-header">
           <div class="record-title">${maintIcon(m.type)} ${escape(m.type)}</div>
           <div class="record-date">${escape(formatDate(m.date))}</div>
         </div>
         <div class="record-meta">
-          <span class="maintenance-status-pill ${state.pillClass}">${state.label}</span>
-          <span>🏍️ 実施から ${Math.round(kmSince).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}</span>
+          <span class="maintenance-status-pill ${pillClass}">${pillLabel}</span>
+          ${kmLine ? `<span>${kmLine}</span>` : ''}
           ${safeNumber(m.odoKm) ? `<span>🔢 距離計 ${safeNumber(m.odoKm).toLocaleString()} km</span>` : ''}
           ${safeNumber(m.cost) ? `<span>💴 ${safeNumber(m.cost).toLocaleString()} 円</span>` : ''}
         </div>
