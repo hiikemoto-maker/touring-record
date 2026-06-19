@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-cMByyW13xcq1JOiKiU3fv3pIS3RLfpJ6DaLFprAN4/s=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WRebrhtIhndV1s1O8cWx7YVRHaaGYLDY9lYXGCkfSaw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -4030,12 +4030,20 @@
         } else {
           neutralLabel = '記録';
         }
-      } else if (isLatestOfType) {
-        kmForStatus = maintenanceKmSince(m, currentOdo);
-        kmLine = `🏍️ 実施から ${Math.round(kmForStatus).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}`;
       } else {
-        neutralLabel = '初回';
-        kmLine = '🏍️ 初回交換（前回の記録なし）';
+        // カテゴリー初回（前回なし）：新車0kmからこの交換までの距離で まだ余裕／そろそろ／交換時期 を判定
+        const odo = safeNumber(m.odoKm);
+        if (odo) {
+          kmForStatus = odo;
+          kmLine = `🏍️ 0kmから ${Math.round(odo).toLocaleString()} km 走行で交換`;
+        } else if (isLatestOfType) {
+          // 距離計の記録がない単独記録は、実施から今までの距離でライブ判定（フォールバック）
+          kmForStatus = maintenanceKmSince(m, currentOdo);
+          kmLine = `🏍️ 実施から ${Math.round(kmForStatus).toLocaleString()} km 走行${odoBased ? '（ODO基準）' : ''}`;
+        } else {
+          neutralLabel = '初回';
+          kmLine = '🏍️ 初回交換（距離計の記録なし）';
+        }
       }
       const state = kmForStatus !== null
         ? maintenanceStatus(m.type, kmForStatus)

@@ -8,4 +8,4 @@
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-cMByyW13xcq1JOiKiU3fv3pIS3RLfpJ6DaLFprAN4/s=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-WRebrhtIhndV1s1O8cWx7YVRHaaGYLDY9lYXGCkfSaw=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
