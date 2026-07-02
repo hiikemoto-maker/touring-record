@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-IBcBixBvytGnN4HdMZ5T243vmAGwFpNya+Qxf+Ow7hM=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-Vz64ZEPxFWCXlI8nKZyziZdJJqGjd9QLALlK0pTYLHQ=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -616,6 +616,12 @@
     .settings-toggle.open .settings-caret { transform: rotate(90deg); }
     .settings-body { margin-top: 12px; }
     .year-filter { margin-bottom: 12px; }
+    .draft-banner { border-left: 4px solid #f5a623; }
+    .draft-banner-text {
+      font-size: 0.9rem;
+      color: #ffd98f;
+      margin-bottom: 10px;
+    }
     .maint-limit-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 90px 90px;
@@ -970,6 +976,13 @@
 
   <!-- ===== 追加フォーム ===== -->
   <div id="tab-add">
+    <div class="card draft-banner" id="draft-banner" style="display:none;">
+      <div class="draft-banner-text">📝 書きかけの記録があります（写真は含まれません）</div>
+      <div class="sync-actions">
+        <button type="button" class="btn-sync" id="btn-restore-draft">復元する</button>
+        <button type="button" class="btn-sync" id="btn-discard-draft">破棄する</button>
+      </div>
+    </div>
     <div class="card">
       <div class="form-group">
         <label>📌 タイトル</label>
@@ -1117,6 +1130,10 @@
       <div class="stat-box">
         <div class="num" id="stat-days">0</div>
         <div class="lbl">総ツーリング日数</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-fuel-eff">—</div>
+        <div class="lbl">⛽ 平均燃費 km/L</div>
       </div>
       <div class="stat-box">
         <div class="num" id="stat-cost">0</div>
@@ -1279,6 +1296,7 @@
   const SYNC_PENDING_STORAGE = 'touring_sync_pending';
   const CURRENT_ODO_STORAGE = 'touring_current_odo';
   const MAINT_LIMITS_STORAGE = 'touring_maint_limits';
+  const DRAFT_STORAGE = 'touring_draft';
   const LAST_EXPORT_STORAGE = 'touring_last_export_at';
   const LAST_IMPORT_STORAGE = 'touring_last_import_at';
   const APP_VERSION = '2026.06.15-2';
@@ -2281,6 +2299,7 @@
     }
 
     resetForm();
+    if (!wasEditing) clearDraft(); // 保存できたので下書きは不要
     queueAutoSync();
     updateBackupHealth();
 
@@ -2312,6 +2331,120 @@
     document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
     document.getElementById('save-btn').textContent = '💾 記録を保存する';
     document.getElementById('cancel-edit-btn').style.display = 'none';
+  }
+
+  // ===== 下書き自動保存（iOSがPWAを強制終了しても入力を失わないため）=====
+  let draftSaveTimer = null;
+
+  function collectDraft() {
+    // 写真は容量が大きいので下書きには含めない（バナーにも明記）
+    const stops = getStops().map(s => {
+      const { photos, ...rest } = s;
+      return rest;
+    });
+    return {
+      title: document.getElementById('f-title').value.trim(),
+      dateFrom: document.getElementById('f-date-from').value,
+      dateTo: document.getElementById('f-date-to').value,
+      from: document.getElementById('f-from').value.trim(),
+      to: document.getElementById('f-to').value.trim(),
+      stops,
+      distances: getDistances(),
+      dailyDistances: getDailyDistances(),
+      dailyWeather: getDailyWeather(),
+      fuel: document.getElementById('f-fuel').value,
+      fuelCost: document.getElementById('f-fuel-cost').value,
+      rating,
+      memo: document.getElementById('f-memo').value.trim(),
+      calcBasis: [...lastCalcBasis],
+      savedAt: Date.now()
+    };
+  }
+
+  function isMeaningfulDraft(d) {
+    if (!d || typeof d !== 'object') return false;
+    return Boolean(
+      d.title || d.from || d.to || d.memo ||
+      (Array.isArray(d.stops) && d.stops.length) ||
+      (Array.isArray(d.distances) && d.distances.some(x => x && safeNumber(x.km) > 0)) ||
+      safeNumber(d.fuel) > 0 || safeNumber(d.fuelCost) > 0 ||
+      clampInt(d.rating, 0, 5) > 0
+    );
+  }
+
+  function getStoredDraft() {
+    try {
+      const d = JSON.parse(getStoredValue(DRAFT_STORAGE) || 'null');
+      return isMeaningfulDraft(d) ? d : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearDraft() {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE);
+    } catch {}
+  }
+
+  function scheduleDraftSave() {
+    if (editingId) return; // 既存記録の編集中は下書き対象外
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = setTimeout(() => {
+      if (editingId) return;
+      const d = collectDraft();
+      if (isMeaningfulDraft(d)) {
+        setStoredValue(DRAFT_STORAGE, JSON.stringify(d));
+        // 下書きが今の入力内容に置き換わったので、古い下書きの復元バナーは閉じる
+        document.getElementById('draft-banner').style.display = 'none';
+      } else {
+        clearDraft();
+      }
+    }, 800);
+  }
+
+  function restoreDraft() {
+    const d = getStoredDraft();
+    const banner = document.getElementById('draft-banner');
+    if (!d) {
+      banner.style.display = 'none';
+      return;
+    }
+    resetForm();
+    document.getElementById('f-title').value = d.title || '';
+    if (d.dateFrom) document.getElementById('f-date-from').value = d.dateFrom;
+    if (d.dateTo) document.getElementById('f-date-to').value = d.dateTo;
+    document.getElementById('f-from').value = d.from || '';
+    document.getElementById('f-to').value = d.to || '';
+    const distances = Array.isArray(d.distances) ? d.distances : [];
+    document.getElementById('distance-list').innerHTML = '';
+    if (distances.length === 0) {
+      addDistanceRow(DISTANCE_KIND_BIKE, '');
+    } else {
+      distances.forEach(x => addDistanceRow(x.kind, x.km));
+    }
+    document.getElementById('f-fuel').value = d.fuel || '';
+    document.getElementById('f-fuel-cost').value = d.fuelCost || '';
+    document.getElementById('f-memo').value = d.memo || '';
+    document.getElementById('stop-list').innerHTML = '';
+    normalizeStops(d.stops).forEach(s => addStop(s.name, s.memo, s.rating, s.type, s.toName, s.vehicle, s.distanceKm, s.date, []));
+    setMainRating(clampInt(d.rating, 0, 5));
+    renderCalcBasis(Array.isArray(d.calcBasis) ? d.calcBasis : []);
+    updateDays();
+    renderDailyDistanceRows(normalizeDailyDistances(
+      d.dailyDistances,
+      d.dateFrom || '',
+      d.dateTo || d.dateFrom || '',
+      distanceSumByKind(normalizeDistances(distances, null, d.stops), DISTANCE_KIND_BIKE)
+    ), Array.isArray(d.dailyWeather) ? d.dailyWeather : []);
+    updateFuelEff();
+    banner.style.display = 'none';
+    switchTab('add');
+    showToast('📝 下書きを復元しました');
+  }
+
+  function initDraftBanner() {
+    if (getStoredDraft()) document.getElementById('draft-banner').style.display = 'block';
   }
 
   // 読み込み
@@ -3197,13 +3330,21 @@
           (s.date || '').toLowerCase().includes(q) ||
           formatDate(s.date).toLowerCase().includes(q)
         );
-    });
+    }).sort((a, b) =>
+      // 日付の新しい順（後入力でも時系列に並ぶ）。日付なしの旧記録は最後
+      String(b.dateFrom || '').localeCompare(String(a.dateFrom || '')) ||
+      String(b.dateTo || '').localeCompare(String(a.dateTo || '')) ||
+      (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)
+    );
 
     // 統計は年セレクタのみ反映する（検索語では変えない）
     const all       = getRecords().filter(r => recordInYear(r, year));
     const totalBikeKm  = all.reduce((s, r) => s + getRecordBikeKm(r), 0);
     const totalFerryKm = all.reduce((s, r) => s + distanceSumByKind(normalizeDistances(r.distances, r.km, r.stops), DISTANCE_KIND_FERRY), 0);
     const totalCost = all.reduce((s, r) => s + safeNumber(r.fuelCost), 0);
+    // 平均燃費＝給油量が入っている記録だけで Σバイクkm ÷ Σ給油L
+    const fuelKm = all.reduce((s, r) => safeNumber(r.fuel) > 0 ? s + getRecordBikeKm(r) : s, 0);
+    const fuelL  = all.reduce((s, r) => s + safeNumber(r.fuel), 0);
     const totalDays = all.reduce((s, r) => {
       if (!r.dateFrom) return s + 1;
       const to = r.dateTo && r.dateTo >= r.dateFrom ? r.dateTo : r.dateFrom;
@@ -3214,6 +3355,7 @@
     document.getElementById('stat-km-bike-day').textContent = totalDays > 0 ? Math.round(totalBikeKm / totalDays).toLocaleString() : '0';
     document.getElementById('stat-km-ferry').textContent = Math.round(totalFerryKm).toLocaleString();
     document.getElementById('stat-days').textContent  = totalDays;
+    document.getElementById('stat-fuel-eff').textContent = fuelL > 0 && fuelKm > 0 ? (fuelKm / fuelL).toFixed(1) : '—';
     document.getElementById('stat-cost').textContent  = totalCost.toLocaleString();
 
     const el = document.getElementById('record-list');
@@ -3754,6 +3896,19 @@
     document.getElementById('stat-year').addEventListener('change', renderList);
     document.getElementById('btn-save-maint-limits').addEventListener('click', saveMaintLimits);
     document.getElementById('btn-reset-maint-limits').addEventListener('click', resetMaintLimits);
+    document.getElementById('btn-restore-draft').addEventListener('click', restoreDraft);
+    document.getElementById('btn-discard-draft').addEventListener('click', () => {
+      clearDraft();
+      document.getElementById('draft-banner').style.display = 'none';
+      showToast('下書きを破棄しました');
+    });
+    // 記録追加フォームの入力を下書きとして自動保存（動的に増える行にも効くよう委譲で受ける）
+    const tabAdd = document.getElementById('tab-add');
+    tabAdd.addEventListener('input', scheduleDraftSave);
+    tabAdd.addEventListener('change', scheduleDraftSave);
+    tabAdd.addEventListener('click', e => {
+      if (e.target.closest('button, .star')) scheduleDraftSave();
+    });
     document.getElementById('f-date-from').addEventListener('input', updateDays);
     document.getElementById('f-date-to').addEventListener('input', updateDays);
     document.getElementById('f-fuel').addEventListener('input', updateFuelEff);
@@ -4361,6 +4516,7 @@
   resetMaintenanceForm();
   renderMaintLimitRows();
   updateMaintLimitsStatus();
+  initDraftBanner();
   switchTab('add');
   retryPendingSync();
   // 写真キャッシュの読み込み＋レガシー写真のIDB移行。完了後に一覧を再描画する
