@@ -4,7 +4,7 @@
  * - heic2any CDN (unpkg): SRI固定で不変のためキャッシュ優先
  * - 地図・天気・クラウド同期などのAPI: 介入しない（キャッシュすると同期の正しさを壊すため）
  */
-const CACHE_NAME = 'touring-shell-v26';
+const CACHE_NAME = 'touring-shell-v27';
 const APP_SHELL = [
   './',
   './index.html',
