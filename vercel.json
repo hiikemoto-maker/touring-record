@@ -23,7 +23,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-29/s9/SCvM0rU7jOPmKTcsfISFRzN+okcZBMQIUBtt0=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-SdVr58m5vfpoSVj6DQmJ7UmuMHCOMA/LLITM7LdXy94=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
         }
       ]
     }
