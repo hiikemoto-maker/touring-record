@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-SdVr58m5vfpoSVj6DQmJ7UmuMHCOMA/LLITM7LdXy94=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-BM0iwZwAt9dsOoQSetXS7cVlT7zZadK9Ny0WfA/7c9k=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -1218,7 +1218,10 @@
         <div class="sync-status" id="routing-status">未設定</div>
       </div>
       <div class="sync-grid">
-        <input id="routing-key" type="password" placeholder="OpenRouteService APIキー" autocomplete="off" />
+        <div class="key-wrap">
+          <input id="routing-key" type="password" placeholder="OpenRouteService APIキー" autocomplete="off" />
+          <button type="button" class="key-toggle" id="btn-toggle-routing-key" aria-label="APIキーを表示">👁</button>
+        </div>
       </div>
       <div class="sync-actions">
         <button type="button" class="btn-sync" id="btn-save-routing">キーを保存</button>
@@ -3940,14 +3943,18 @@
     document.getElementById('stat-year').addEventListener('change', renderList);
     document.getElementById('btn-save-maint-limits').addEventListener('click', saveMaintLimits);
     document.getElementById('btn-reset-maint-limits').addEventListener('click', resetMaintLimits);
-    document.getElementById('btn-toggle-sync-key').addEventListener('click', () => {
-      const input = document.getElementById('sync-key');
-      const btn = document.getElementById('btn-toggle-sync-key');
-      const show = input.type === 'password';
-      input.type = show ? 'text' : 'password';
-      btn.textContent = show ? '🙈' : '👁';
-      btn.setAttribute('aria-label', show ? '同期キーを隠す' : '同期キーを表示');
-    });
+    const bindKeyVisibilityToggle = (btnId, inputId, label) => {
+      const btn = document.getElementById(btnId);
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(inputId);
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? '🙈' : '👁';
+        btn.setAttribute('aria-label', label + (show ? 'を隠す' : 'を表示'));
+      });
+    };
+    bindKeyVisibilityToggle('btn-toggle-sync-key', 'sync-key', '同期キー');
+    bindKeyVisibilityToggle('btn-toggle-routing-key', 'routing-key', 'APIキー');
     document.getElementById('btn-fill-odo').addEventListener('click', () => {
       const btn = document.getElementById('btn-fill-odo');
       if (btn.dataset.odo) document.getElementById('m-odo').value = btn.dataset.odo;
