@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VIRTUA FIGHTER 6 風 ｜ 3Dポリゴン格闘</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
+  body {
+    font-family: "Impact", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+    color: #fff; width: 100vw; height: 100vh; user-select: none;
+  }
+  #stage { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+
+  /* HUD */
+  .hud { position: fixed; left: 0; right: 0; top: 0; pointer-events: none; padding: 10px 180px 10px 16px; z-index: 5; }
+  @media (max-width: 800px) { .hud { padding: 56px 16px 10px 16px; } }
+  .hud-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+  .hp-wrap { flex: 1; min-width: 0; }
+  .hp-wrap.right { display: flex; flex-direction: column; align-items: flex-end; }
+  .name {
+    font-size: 22px; letter-spacing: 4px; font-weight: 800;
+    text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.8); margin-bottom: 4px;
+  }
+  .name .jp { font-size: 12px; opacity: .8; letter-spacing: 6px; margin-left: 8px; }
+  .hp-bar {
+    width: 100%; max-width: 480px; height: 22px; background: #20202a;
+    border: 2px solid #ffcb22; border-radius: 3px; overflow: hidden; position: relative;
+    box-shadow: 0 0 14px rgba(255,180,40,.35);
+  }
+  .hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ffd84a, #ff8a00 60%, #ff2a2a);
+    transition: width .18s ease-out;
+  }
+  .hp-bar.flip { display: flex; justify-content: flex-end; }
+  .center { flex: 0 0 auto; text-align: center; min-width: 130px; }
+  .timer {
+    font-size: 50px; font-weight: 900; color: #ffcb22; line-height: 1;
+    text-shadow: 0 0 10px rgba(255,180,40,.6), 0 3px 0 #000;
+  }
+  .timer.warn { color: #ff5050; animation: pulse .4s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+  .round { font-size: 11px; color: #ddd; letter-spacing: 6px; opacity: .85; margin-top: 2px; }
+  .wins-row { display: flex; gap: 16px; justify-content: center; margin-top: 6px; }
+  .wins { display: flex; gap: 5px; }
+  .wins .w {
+    width: 11px; height: 11px; border: 1.5px solid #ffcb22; border-radius: 50%;
+    background: transparent; box-shadow: inset 0 0 4px rgba(0,0,0,.6);
+  }
+  .wins .w.on { background: #ffcb22; box-shadow: 0 0 8px #ffcb22; }
+
+  /* Banner */
+  #banner {
+    position: fixed; left: 0; right: 0; top: 32%; text-align: center; pointer-events: none;
+    z-index: 8;
+    font-size: 82px; font-weight: 900; letter-spacing: 14px;
+    color: #fff; text-shadow: 0 0 24px #ff6a00, 0 6px 0 #000;
+    transition: opacity .25s, transform .35s; opacity: 0; transform: scale(.7);
+  }
+  #banner.on { opacity: 1; transform: scale(1); }
+  #banner .sub {
+    display: block; font-size: 24px; letter-spacing: 8px; color: #ffcb22;
+    margin-top: 10px; text-shadow: 0 0 12px rgba(255,160,0,.7), 0 3px 0 #000;
+  }
+
+  /* Bottom controls hint */
+  .bottom {
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 12px;
+    display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none;
+    font-size: 11px; color: #ddd; gap: 10px; z-index: 5;
+  }
+  .ctrls { line-height: 1.55; background: rgba(0,0,0,.55); padding: 7px 10px; border-radius: 6px; border: 1px solid #333; }
+  .ctrls b { color: #ffcb22; letter-spacing: 2px; margin-right: 6px; }
+  kbd {
+    background: #1a1a26; border: 1px solid #555; border-bottom-width: 2px; border-radius: 3px;
+    padding: 0px 5px; font-size: 10px; font-family: monospace; color: #fff; margin: 0 1px;
+  }
+
+  /* Menu / character select */
+  .overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(20,20,40,.55), rgba(0,0,0,.92));
+    z-index: 100; flex-direction: column; gap: 12px; padding: 20px;
+  }
+  .overlay h1 {
+    font-size: 56px; letter-spacing: 12px; color: #ffcb22; margin: 0;
+    text-shadow: 0 0 24px rgba(255,160,0,.8), 0 4px 0 #000;
+  }
+  .overlay .tag { color: #ddd; letter-spacing: 6px; font-size: 14px; margin-bottom: 6px; }
+  .mode-row { display: flex; gap: 14px; margin: 8px 0 6px; }
+  .modebtn {
+    padding: 8px 22px; background: #1a1a26; border: 2px solid #555; color: #fff;
+    font-size: 13px; letter-spacing: 4px; cursor: pointer; border-radius: 4px; font-weight: 700;
+  }
+  .modebtn.on { background: #ffcb22; color: #000; border-color: #ffcb22; box-shadow: 0 0 14px rgba(255,180,40,.6); }
+  .pick-instr { font-size: 12px; color: #aaa; letter-spacing: 3px; margin: 6px 0; }
+  .char-grid {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 130px)); gap: 8px; margin-top: 6px;
+  }
+  @media (max-width: 900px) { .char-grid { grid-template-columns: repeat(3, 1fr); } }
+  .char {
+    padding: 10px 8px; border: 2px solid #444; background: #11131c; color: #fff;
+    cursor: pointer; text-align: center; border-radius: 6px; font-size: 13px;
+    letter-spacing: 2px; transition: transform .15s, box-shadow .15s;
+    position: relative;
+  }
+  .char:hover { transform: translateY(-3px); }
+  .char .jp { display: block; font-size: 11px; color: #bbb; letter-spacing: 4px; margin-top: 2px; }
+  .char .ty { display: block; font-size: 10px; color: #ffcb22; margin-top: 4px; letter-spacing: 3px; }
+  .char .swatch { width: 100%; height: 8px; border-radius: 2px; margin-bottom: 6px; }
+  .char.p1 { border-color: #4aa6ff; box-shadow: 0 0 14px rgba(74,166,255,.55); }
+  .char.p2 { border-color: #ff6a4a; box-shadow: 0 0 14px rgba(255,106,74,.55); }
+  .char.p1.p2 {
+    border-image: linear-gradient(45deg, #4aa6ff, #ff6a4a) 1;
+    border-style: solid; border-width: 2px;
+  }
+  .badge { position: absolute; top: -8px; font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 800; letter-spacing: 2px; }
+  .char .b1 { left: 4px; background: #4aa6ff; color: #000; }
+  .char .b2 { right: 4px; background: #ff6a4a; color: #000; }
+  .startbtn {
+    margin-top: 12px; padding: 12px 36px; background: #ffcb22; border: 2px solid #ffcb22; color: #000;
+    font-size: 16px; letter-spacing: 6px; cursor: pointer; border-radius: 4px; font-weight: 900;
+    box-shadow: 0 0 22px rgba(255,180,40,.7);
+  }
+  .startbtn:disabled { background: #555; border-color: #555; color: #aaa; box-shadow: none; cursor: not-allowed; }
+  .hidden { display: none !important; }
+
+  /* Result */
+  #result { z-index: 110; }
+  #result .big { font-size: 64px; letter-spacing: 8px; color: #ffcb22; text-shadow: 0 0 22px rgba(255,180,40,.7), 0 4px 0 #000; }
+
+  /* Bottom right small button */
+  .topright {
+    position: fixed; top: 10px; right: 14px; z-index: 50; display: flex; gap: 6px;
+  }
+  .topright button {
+    padding: 6px 10px; background: rgba(0,0,0,.55); border: 1px solid #555; color: #fff;
+    font-size: 11px; cursor: pointer; border-radius: 4px; letter-spacing: 2px;
+  }
+  .topright button:hover { border-color: #ffcb22; color: #ffcb22; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<!-- HUD -->
+<div class="hud hidden" id="hud">
+  <div class="hud-row">
+    <div class="hp-wrap">
+      <div class="name" id="name1" style="color:#4aa6ff">RAIDEN<span class="jp" id="name1jp">雷電</span></div>
+      <div class="hp-bar"><div class="hp-fill" id="hp1" style="width:100%"></div></div>
+    </div>
+    <div class="center">
+      <div class="round" id="round">ROUND 1</div>
+      <div class="timer" id="timer">60</div>
+      <div class="wins-row">
+        <div class="wins" id="wins1"><div class="w"></div><div class="w"></div></div>
+        <div class="wins" id="wins2"><div class="w"></div><div class="w"></div></div>
+      </div>
+    </div>
+    <div class="hp-wrap right">
+      <div class="name" id="name2" style="color:#ff6a4a; text-align:right">JET<span class="jp" id="name2jp">疾風</span></div>
+      <div class="hp-bar flip"><div class="hp-fill" id="hp2" style="width:100%"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="banner"></div>
+
+<div class="bottom hidden" id="bottom">
+  <div class="ctrls">
+    <b>1P</b>
+    移動 <kbd>A</kbd><kbd>D</kbd>
+    横ステ <kbd>Q</kbd><kbd>E</kbd>
+    ジャンプ <kbd>W</kbd>　しゃがみ <kbd>S</kbd>
+    P <kbd>J</kbd>　K <kbd>K</kbd>　G <kbd>L</kbd>
+  </div>
+  <div class="ctrls">
+    <b>2P</b>
+    移動 <kbd>←</kbd><kbd>→</kbd>
+    横ステ <kbd>U</kbd><kbd>O</kbd>
+    J <kbd>↑</kbd>　しゃがみ <kbd>↓</kbd>
+    P <kbd>,</kbd>　K <kbd>.</kbd>　G <kbd>/</kbd>
+  </div>
+</div>
+
+<div class="topright hidden" id="topright">
+  <button id="muteBtn">🔊 SOUND</button>
+  <button id="menuBtn">≡ メニュー</button>
+</div>
+
+<!-- Title / Character Select -->
+<div class="overlay" id="menu">
+  <h1>VIRTUA FIGHTER 6</h1>
+  <div class="tag">— 3D POLYGON COMBAT —</div>
+
+  <div class="mode-row">
+    <button class="modebtn on" id="modeCpu">VS CPU</button>
+    <button class="modebtn" id="modeVs">VS 2P</button>
+  </div>
+
+  <div class="pick-instr">P1（青）/ P2（赤）のキャラを選択してください</div>
+  <div class="char-grid" id="charGrid"></div>
+
+  <button class="startbtn" id="startBtn" disabled>FIGHT START</button>
+</div>
+
+<!-- Result overlay -->
+<div class="overlay hidden" id="result">
+  <div class="big" id="resultText">RAIDEN WINS</div>
+  <div class="tag" id="resultSub">FLAWLESS VICTORY</div>
+  <div class="mode-row">
+    <button class="modebtn" id="rematchBtn">REMATCH</button>
+    <button class="modebtn" id="backMenuBtn">MENU</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+(() => {
+  "use strict";
+
+  // ========= キャラデータ =========
+  const CHARS = [
+    { id:'raiden', name:'RAIDEN', jp:'雷電', type:'バランス',
+      col:0x4aa6ff, dark:0x1c4f8f, hair:0x222633,
+      hp:100, speed:1.00, jump:1.00, punch:1.00, kick:1.00, reach:1.00, weight:1.00, scale:1.00 },
+    { id:'jet', name:'JET', jp:'疾風', type:'スピード',
+      col:0x18d6d6, dark:0x0c6e6e, hair:0xd2dae0,
+      hp:88, speed:1.30, jump:1.10, punch:0.85, kick:0.92, reach:0.95, weight:0.82, scale:0.93 },
+    { id:'goro', name:'GORO', jp:'剛羅', type:'パワー',
+      col:0xe98a1e, dark:0x945210, hair:0x111111,
+      hp:120, speed:0.80, jump:0.90, punch:1.35, kick:1.30, reach:1.05, weight:1.42, scale:1.15 },
+    { id:'lana', name:'LANA', jp:'蓮華', type:'リーチ',
+      col:0xe23bb0, dark:0x8f1c6c, hair:0x331033,
+      hp:94, speed:1.05, jump:1.05, punch:0.90, kick:1.20, reach:1.30, weight:0.92, scale:1.04 },
+    { id:'tank', name:'TANK', jp:'鉄壁', type:'タフ',
+      col:0x46c25e, dark:0x1f6e30, hair:0x222222,
+      hp:138, speed:0.85, jump:0.88, punch:1.05, kick:1.05, reach:0.95, weight:1.50, scale:1.13 },
+    { id:'ninja', name:'NINJA', jp:'忍', type:'技巧',
+      col:0x8a5cf0, dark:0x4f2e9c, hair:0x111122,
+      hp:92, speed:1.15, jump:1.15, punch:0.95, kick:1.10, reach:1.05, weight:0.92, scale:0.98 }
+  ];
+
+  // ========= Three.js セットアップ =========
+  const canvas = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05060d);
+  scene.fog = new THREE.Fog(0x05060d, 18, 46);
+
+  // 環境マップ（PBR反射でマテリアルに深みを出す）
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100);
+  camera.position.set(0, 3.4, 9);
+  camera.lookAt(0, 1.2, 0);
+
+  // ポストプロセス（ブルームで発光を表現）
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.55,  // strength
+    0.5,   // radius
+    0.82   // threshold
+  );
+  composer.addPass(bloom);
+
+  // ライト
+  const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xfff2e0, 2.4);
+  sun.position.set(6, 13, 7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0004;
+  sun.shadow.radius = 4;
+  sun.shadow.camera.left = -10;
+  sun.shadow.camera.right = 10;
+  sun.shadow.camera.top = 10;
+  sun.shadow.camera.bottom = -10;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 30;
+  scene.add(sun);
+  const rimL = new THREE.PointLight(0x4a80ff, 0.8, 25);
+  rimL.position.set(-9, 5, -4); scene.add(rimL);
+  const rimR = new THREE.PointLight(0xff6a4a, 0.8, 25);
+  rimR.position.set(9, 5, -4); scene.add(rimR);
+
+  // アリーナ（八角形）
+  const ringRadius = 6.2;
+  const arena = new THREE.Mesh(
+    new THREE.CylinderGeometry(ringRadius, ringRadius * 0.95, 0.55, 8),
+    new THREE.MeshStandardMaterial({ color: 0x1d2434, roughness: 0.7, metalness: 0.2 })
+  );
+  arena.position.y = -0.27;
+  arena.receiveShadow = true;
+  scene.add(arena);
+
+  // 床のリング（縁取り）
+  const ringEdge = new THREE.Mesh(
+    new THREE.RingGeometry(ringRadius - 0.35, ringRadius - 0.05, 32, 1),
+    new THREE.MeshBasicMaterial({ color: 0xffcb22, side: THREE.DoubleSide })
+  );
+  ringEdge.rotation.x = -Math.PI/2; ringEdge.position.y = 0.011;
+  scene.add(ringEdge);
+  const ringCenter = new THREE.Mesh(
+    new THREE.RingGeometry(1.7, 1.78, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffcb22, side: THREE.DoubleSide, transparent: true, opacity: 0.45 })
+  );
+  ringCenter.rotation.x = -Math.PI/2; ringCenter.position.y = 0.012;
+  scene.add(ringCenter);
+  // 中央のマーク
+  const cross = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.6, 0.08),
+    new THREE.MeshBasicMaterial({ color: 0xffcb22, transparent: true, opacity: 0.35 })
+  );
+  cross.rotation.x = -Math.PI/2; cross.position.y = 0.013; scene.add(cross);
+  const cross2 = cross.clone(); cross2.rotation.z = Math.PI/2; scene.add(cross2);
+
+  // 床（リングの外、低い）
+  const lower = new THREE.Mesh(
+    new THREE.PlaneGeometry(80, 80),
+    new THREE.MeshStandardMaterial({ color: 0x05060c, roughness: 1 })
+  );
+  lower.rotation.x = -Math.PI/2; lower.position.y = -1.8; lower.receiveShadow = true;
+  scene.add(lower);
+
+  // 観客席風のリング
+  const standsGeo = new THREE.CylinderGeometry(11, 12, 1.6, 16, 1, true);
+  const stands = new THREE.Mesh(standsGeo, new THREE.MeshStandardMaterial({ color: 0x141828, side: THREE.DoubleSide, roughness: 1 }));
+  stands.position.y = 0.5; scene.add(stands);
+
+  // 遠景ビル群
+  for (let i = 0; i < 30; i++) {
+    const w = 0.9 + Math.random() * 1.6;
+    const h = 5 + Math.random() * 14;
+    const d = 0.9 + Math.random() * 1.6;
+    const b = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: 0x121724, emissive: 0x0a1020, roughness: 1 })
+    );
+    const ang = Math.random() * Math.PI * 2;
+    const r = 16 + Math.random() * 12;
+    b.position.set(Math.cos(ang) * r, h/2 - 1.5, Math.sin(ang) * r);
+    scene.add(b);
+    // 窓
+    const winCount = Math.floor(h * 2);
+    for (let j = 0; j < winCount; j++) {
+      if (Math.random() < 0.55) continue;
+      const win = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.12, 0.12),
+        new THREE.MeshBasicMaterial({ color: Math.random() > 0.6 ? 0xffcb22 : 0x88bbff })
+      );
+      const fa = Math.atan2(-b.position.x, -b.position.z);
+      win.position.copy(b.position);
+      win.position.y = b.position.y - h/2 + (j + 0.5) * (h / winCount);
+      win.position.x += Math.sin(fa + Math.PI) * (w/2 + 0.01);
+      win.position.z += Math.cos(fa + Math.PI) * (d/2 + 0.01);
+      win.lookAt(0, win.position.y, 0);
+      scene.add(win);
+    }
+  }
+
+  // ========= キャラクター構築（リギング） =========
+  function buildFighter(char) {
+    const root = new THREE.Group();
+    const sc = char.scale;
+    const skin   = new THREE.MeshStandardMaterial({ color: 0xf2c79c, roughness: 0.62, metalness: 0.04 });
+    const cloth  = new THREE.MeshStandardMaterial({ color: char.col, roughness: 0.5,  metalness: 0.2,  envMapIntensity: 1.1 });
+    const accent = new THREE.MeshStandardMaterial({ color: char.dark, roughness: 0.32, metalness: 0.6,  envMapIntensity: 1.4 });
+    const hairMat= new THREE.MeshStandardMaterial({ color: char.hair, roughness: 0.45, metalness: 0.25 });
+    const gold   = new THREE.MeshStandardMaterial({ color: 0xffcb22, roughness: 0.28, metalness: 0.75, emissive: 0x3a2a00, emissiveIntensity: 0.6 });
+
+    const parts = { flashMats: [skin, cloth, accent] };
+    const joint = (r, mat) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), mat); m.castShadow = true; return m; };
+
+    // 骨盤
+    parts.pelvis = new THREE.Group();
+    parts.pelvis.position.y = 0.95 * sc;
+    root.add(parts.pelvis);
+    const pelvisMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.2*sc, 0.1*sc, 6, 16), accent);
+    pelvisMesh.scale.set(1.35, 1.0, 0.92); pelvisMesh.castShadow = true; parts.pelvis.add(pelvisMesh);
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.27*sc, 0.05*sc, 10, 24), gold);
+    belt.rotation.x = Math.PI/2; belt.scale.set(1.05, 0.78, 1); belt.position.y = 0.03*sc; parts.pelvis.add(belt);
+
+    // 腹（脊椎・下部）
+    parts.torso = new THREE.Group();
+    parts.torso.position.y = 0.18*sc;
+    parts.pelvis.add(parts.torso);
+    const abdomenMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.19*sc, 0.12*sc, 8, 16), cloth);
+    abdomenMesh.scale.set(1.26, 1.0, 0.66); abdomenMesh.position.y = 0.1*sc; abdomenMesh.castShadow = true; parts.torso.add(abdomenMesh);
+
+    // 胸（脊椎・上部）
+    parts.chest = new THREE.Group();
+    parts.chest.position.y = 0.26*sc;
+    parts.torso.add(parts.chest);
+    const chestMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22*sc, 0.2*sc, 8, 18), cloth);
+    chestMesh.scale.set(1.34, 1.0, 0.68); chestMesh.position.y = 0.12*sc; chestMesh.castShadow = true; parts.chest.add(chestMesh);
+    const chestEmblem = new THREE.Mesh(new THREE.CircleGeometry(0.09*sc, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffe27a }));
+    chestEmblem.position.set(0, 0.17*sc, 0.205*sc); parts.chest.add(chestEmblem);
+
+    // 首（独立関節）
+    parts.neck = new THREE.Group();
+    parts.neck.position.y = 0.32*sc;
+    parts.chest.add(parts.neck);
+    const neckMesh = joint(0.085*sc, skin); neckMesh.position.y = 0.02*sc; neckMesh.scale.set(1, 1.35, 1); parts.neck.add(neckMesh);
+
+    // 頭
+    parts.head = new THREE.Group();
+    parts.head.position.y = 0.14*sc;
+    parts.neck.add(parts.head);
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.185*sc, 20, 18), skin);
+    headMesh.scale.set(0.95, 1.08, 1.0); headMesh.castShadow = true; parts.head.add(headMesh);
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2*sc, 18, 14, 0, Math.PI*2, 0, Math.PI*0.62), hairMat);
+    hair.scale.set(0.99, 1.0, 1.03); hair.position.y = 0.02*sc; parts.head.add(hair);
+    // 目
+    const eyeG = new THREE.SphereGeometry(0.03*sc, 8, 8);
+    const eyeM = new THREE.MeshStandardMaterial({ color: 0x12151c, roughness: 0.2 });
+    const eL = new THREE.Mesh(eyeG, eyeM); eL.position.set(-0.07*sc, 0.0, 0.165*sc); parts.head.add(eL);
+    const eR = new THREE.Mesh(eyeG, eyeM); eR.position.set(0.07*sc, 0.0, 0.165*sc); parts.head.add(eR);
+    // 口
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.09*sc, 0.018*sc, 0.02*sc),
+      new THREE.MeshStandardMaterial({ color: 0x6b2b2b, roughness: 0.6 }));
+    mouth.position.set(0, -0.09*sc, 0.16*sc); parts.head.add(mouth);
+
+    function buildArm(side) {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(side * 0.3*sc, 0.26*sc, 0);
+      parts.chest.add(shoulder);
+      shoulder.add(joint(0.11*sc, accent)); // 肩当て
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.082*sc, 0.24*sc, 6, 12), cloth);
+      upper.position.y = -0.2*sc; upper.castShadow = true; shoulder.add(upper);
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.42*sc; shoulder.add(elbow);
+      elbow.add(joint(0.072*sc, skin)); // 肘
+      const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.07*sc, 0.18*sc, 6, 12), skin);
+      forearm.position.y = -0.17*sc; forearm.castShadow = true; elbow.add(forearm);
+      // 手首（独立関節）
+      const wrist = new THREE.Group();
+      wrist.position.y = -0.34*sc; elbow.add(wrist);
+      wrist.add(joint(0.055*sc, skin));
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.1*sc, 0.1*sc, 0.055*sc), accent);
+      palm.position.y = -0.06*sc; palm.castShadow = true; wrist.add(palm);
+      // 指（4本）— fingersグループで握りを制御
+      const fingers = new THREE.Group();
+      fingers.position.y = -0.1*sc; wrist.add(fingers);
+      for (let i = 0; i < 4; i++) {
+        const fg = new THREE.Mesh(new THREE.CapsuleGeometry(0.017*sc, 0.05*sc, 3, 6), skin);
+        fg.position.set((i - 1.5) * 0.026*sc, -0.035*sc, 0); fg.castShadow = true; fingers.add(fg);
+      }
+      // 親指
+      const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.019*sc, 0.04*sc, 3, 6), skin);
+      thumb.position.set(side * 0.055*sc, -0.02*sc, 0.01*sc); thumb.rotation.z = side * 1.0; wrist.add(thumb);
+      return { shoulder, elbow, wrist, fingers, fist: palm };
+    }
+    parts.armL = buildArm(-1);
+    parts.armR = buildArm(1);
+
+    function buildLeg(side) {
+      const hip = new THREE.Group();
+      hip.position.set(side * 0.15*sc, -0.06*sc, 0);
+      parts.pelvis.add(hip);
+      hip.add(joint(0.12*sc, accent)); // 股関節
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.115*sc, 0.28*sc, 6, 14), accent);
+      thigh.position.y = -0.25*sc; thigh.castShadow = true; hip.add(thigh);
+      const knee = new THREE.Group();
+      knee.position.y = -0.5*sc; hip.add(knee);
+      knee.add(joint(0.095*sc, cloth)); // 膝
+      const calf = new THREE.Mesh(new THREE.CapsuleGeometry(0.098*sc, 0.24*sc, 6, 14), cloth);
+      calf.position.y = -0.22*sc; calf.castShadow = true; knee.add(calf);
+      // 足首（独立関節）
+      const ankle = new THREE.Group();
+      ankle.position.y = -0.44*sc; knee.add(ankle);
+      ankle.add(joint(0.068*sc, accent));
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.15*sc, 0.1*sc, 0.28*sc), accent);
+      foot.position.set(0, -0.05*sc, 0.06*sc); foot.castShadow = true;
+      const toe = new THREE.Mesh(new THREE.CylinderGeometry(0.05*sc, 0.05*sc, 0.15*sc, 12), accent);
+      toe.rotation.z = Math.PI/2; toe.position.set(0, 0, 0.14*sc); toe.castShadow = true; foot.add(toe);
+      ankle.add(foot);
+      return { hip, knee, ankle, foot };
+    }
+    parts.legL = buildLeg(-1);
+    parts.legR = buildLeg(1);
+
+    // 接地シャドウ（補助）
+    const shadowPlane = new THREE.Mesh(
+      new THREE.CircleGeometry(0.42*sc, 20),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })
+    );
+    shadowPlane.rotation.x = -Math.PI/2;
+    shadowPlane.position.y = 0.015;
+    root.add(shadowPlane);
+    parts.shadowPlane = shadowPlane;
+
+    return { root, parts };
+  }
+
+  // ========= ファイター =========
+  function makeFighter(char, x, facing) {
+    const built = buildFighter(char);
+    scene.add(built.root);
+    built.root.position.set(x, 0, 0);
+    return {
+      char, root: built.root, parts: built.parts,
+      pos: new THREE.Vector3(x, 0, 0),
+      vel: new THREE.Vector3(),
+      facing,
+      hp: char.hp, maxHp: char.hp,
+      state: 'idle',
+      stateTime: 0,
+      attackHit: false,
+      stun: 0,
+      onGround: true,
+      crouching: false,
+      guarding: false,
+      wins: 0,
+      ringOut: false,
+      animClock: 0,
+      cpu: false,
+      aiTimer: 0,
+      aiAction: 'idle',
+      flashTime: 0,
+      hitsTaken: 0
+    };
+  }
+
+  let P1 = null, P2 = null;
+
+  // ========= 状態 =========
+  const G = {
+    phase: 'menu',        // menu, intro, fight, roundend, matchover
+    timer: 0,
+    roundClock: 60 * 60,  // 60秒 × 60fps
+    round: 1,
+    mode: 'cpu',          // cpu, 2p
+    matchWins: [0, 0],
+    selP1: null,
+    selP2: null,
+    introCue: 0
+  };
+
+  // ========= 入力 =========
+  const held = {};
+  const pressed = {};
+  window.addEventListener('keydown', e => {
+    if (!held[e.code]) pressed[e.code] = true;
+    held[e.code] = true;
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+    initAudio();
+    if (e.code === 'KeyR' && G.phase === 'fight') restartMatch();
+  });
+  window.addEventListener('keyup', e => { held[e.code] = false; });
+  function clearPressed() { for (let k in pressed) pressed[k] = false; }
+
+  function getInput1P() {
+    return {
+      left: held['KeyA'],
+      right: held['KeyD'],
+      jump: pressed['KeyW'] || pressed['Space'],
+      crouch: held['KeyS'],
+      sideUp: held['KeyQ'],   // 奥へ (-Z)
+      sideDown: held['KeyE'], // 手前へ (+Z)
+      punch: pressed['KeyJ'],
+      kick: pressed['KeyK'],
+      guard: held['KeyL']
+    };
+  }
+  function getInput2P() {
+    return {
+      left: held['ArrowLeft'],
+      right: held['ArrowRight'],
+      jump: pressed['ArrowUp'],
+      crouch: held['ArrowDown'],
+      sideUp: held['KeyU'],
+      sideDown: held['KeyO'],
+      punch: pressed['Comma'],
+      kick: pressed['Period'],
+      guard: held['Slash']
+    };
+  }
+
+  // ========= 音 =========
+  let actx = null, muted = false;
+  function initAudio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){} } }
+  function beep(freq, dur, type='square', vol=0.10) {
+    if (!actx || muted) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  }
+  const sfx = {
+    punch: () => beep(200, 0.06, 'square', 0.08),
+    kick:  () => beep(140, 0.10, 'sawtooth', 0.10),
+    block: () => beep(420, 0.05, 'triangle', 0.07),
+    hit:   () => beep(90, 0.16, 'sawtooth', 0.16),
+    step:  () => beep(180, 0.03, 'triangle', 0.05),
+    bell:  () => beep(660, 0.22, 'sine', 0.12),
+    ko:    () => { beep(70, 0.4, 'sawtooth', 0.18); setTimeout(()=>beep(50, 0.5, 'square', 0.16), 120); },
+    win:   () => { beep(523, 0.15, 'square', 0.1); setTimeout(()=>beep(659, 0.15, 'square', 0.1), 150); setTimeout(()=>beep(784, 0.3, 'square', 0.12), 300); }
+  };
+
+  // ========= 攻撃データ =========
+  const ATK = {
+    punch: { startup: 5, active: 4, recovery: 12, range: 1.5, height: [0.7, 1.7], dmg: 7, kb: 1.0, stun: 16, vy: 0 },
+    kick:  { startup: 9, active: 6, recovery: 22, range: 2.0, height: [0.4, 1.4], dmg: 13, kb: 2.0, stun: 26, vy: 2.0 },
+    jpunch:{ startup: 4, active: 5, recovery: 8,  range: 1.6, height: [0.8, 1.8], dmg: 8, kb: 1.0, stun: 18, vy: 0 },
+    jkick: { startup: 6, active: 7, recovery: 14, range: 2.0, height: [0.5, 1.6], dmg: 14, kb: 2.0, stun: 24, vy: 0 },
+    cpunch:{ startup: 4, active: 4, recovery: 10, range: 1.3, height: [0.3, 1.0], dmg: 6, kb: 0.8, stun: 14, vy: 0 },
+    ckick: { startup: 8, active: 5, recovery: 18, range: 1.8, height: [0.1, 0.7], dmg: 11, kb: 1.5, stun: 22, vy: 0 }
+  };
+
+  function attackOf(f, type) {
+    let baseKey = type;
+    if (!f.onGround) baseKey = (type === 'punch') ? 'jpunch' : 'jkick';
+    else if (f.crouching) baseKey = (type === 'punch') ? 'cpunch' : 'ckick';
+    const a = ATK[baseKey];
+    const c = f.char;
+    return {
+      key: baseKey,
+      startup: Math.max(2, Math.round(a.startup * (1.0 / (0.7 + 0.3*c.speed)))),
+      active: a.active,
+      recovery: Math.max(4, Math.round(a.recovery * (1.0 / (0.7 + 0.3*c.speed)))),
+      range: a.range * c.reach,
+      height: a.height.slice(),
+      dmg: a.dmg * (type === 'punch' ? c.punch : c.kick),
+      kb: a.kb,
+      stun: a.stun,
+      vy: a.vy
+    };
+  }
+
+  // ========= 当たり判定 =========
+  function tryHit(att, def) {
+    if (!['punch','kick'].includes(att.state)) return;
+    if (att.attackHit) return;
+    if (def.state === 'ko') return;
+    const a = att._attackData;
+    if (!a) return;
+    if (att.stateTime < a.startup) return;
+    if (att.stateTime > a.startup + a.active) return;
+
+    // 攻撃ヒットボックスの中心
+    const hitX = att.pos.x + att.facing * a.range * 0.6;
+    const hitZ = att.pos.z;
+    const dx = def.pos.x - hitX;
+    const dz = def.pos.z - hitZ;
+    const horizDist = Math.sqrt(dx*dx);
+    if (horizDist > a.range * 0.55) return;
+    if (Math.abs(dz) > 0.55) return; // サイドステップ回避
+
+    // 高さチェック
+    const defH = def.crouching ? 1.0 : (def.onGround ? 1.8 : 1.8);
+    const defBottom = def.pos.y;
+    const defTop = def.pos.y + defH;
+    if (a.height[1] < defBottom || a.height[0] > defTop) return;
+
+    // ヒット確定
+    att.attackHit = true;
+    const dir = (def.pos.x >= att.pos.x) ? 1 : -1;
+    const wt = def.char.weight;
+
+    const guardOK = def.guarding && def.onGround && ((def.facing * (att.pos.x - def.pos.x)) > 0);
+    if (guardOK) {
+      def.hp = Math.max(0, def.hp - a.dmg * 0.13);
+      def.stun = 10;
+      def.vel.x = dir * a.kb * 0.4 / wt;
+      flash(0xffffff, 4);
+      sfx.block();
+    } else {
+      def.hp = Math.max(0, def.hp - a.dmg);
+      def.state = 'hit';
+      def.stateTime = 0;
+      def.stun = a.stun;
+      def.vel.x = dir * a.kb / wt;
+      if (a.vy > 0) { def.vel.y = a.vy; def.onGround = false; }
+      def.flashTime = 8;
+      def.hitsTaken++;
+      flash(0xff5040, 6);
+      sfx.hit();
+    }
+    if (def.hp <= 0) {
+      def.state = 'ko';
+      def.stateTime = 0;
+      def.vel.x = dir * 2.4 / wt;
+      def.vel.y = 4;
+      def.onGround = false;
+      sfx.ko();
+    }
+  }
+
+  function flash(color, time) {
+    // 簡易: 一瞬リムライトを強くする
+    G.flash = { color, time };
+  }
+
+  // ========= キャラポーズ =========
+  function resetPose(p) {
+    p.pelvis.rotation.set(0,0,0); p.pelvis.position.y = 0.95;
+    p.torso.rotation.set(0,0,0);  p.torso.position.set(0, 0.18, 0);
+    p.chest.rotation.set(0,0,0);
+    p.neck.rotation.set(0,0,0);
+    p.head.rotation.set(0,0,0);
+    ['armL','armR'].forEach(k => { p[k].shoulder.rotation.set(0,0,0); p[k].elbow.rotation.set(0,0,0); p[k].wrist.rotation.set(0,0,0); p[k].fingers.rotation.set(0,0,0); });
+    ['legL','legR'].forEach(k => { p[k].hip.rotation.set(0,0,0); p[k].knee.rotation.set(0,0,0); p[k].ankle.rotation.set(0,0,0); });
+  }
+
+  function poseBones(p) {
+    const a = [p.pelvis, p.torso, p.chest, p.neck, p.head];
+    a.push(p.armL.shoulder, p.armL.elbow, p.armL.wrist, p.armL.fingers);
+    a.push(p.armR.shoulder, p.armR.elbow, p.armR.wrist, p.armR.fingers);
+    a.push(p.legL.hip, p.legL.knee, p.legL.ankle);
+    a.push(p.legR.hip, p.legR.knee, p.legR.ankle);
+    return a;
+  }
+
+  // 目標ポーズへ慣性をもって追従させ、動きを人間らしく滑らかにする
+  function poseFighterSmooth(f) {
+    const bones = poseBones(f.parts);
+    const prev = bones.map(b => [b.rotation.x, b.rotation.y, b.rotation.z, b.position.y]);
+    poseFighter(f); // 目標ポーズを直接適用
+    const s = f.state;
+    const k = (s === 'hit' || s === 'ko') ? 0.5
+            : (s === 'punch' || s === 'kick') ? 0.46
+            : 0.26;
+    for (let i = 0; i < bones.length; i++) {
+      const b = bones[i], q = prev[i];
+      b.rotation.x = q[0] + (b.rotation.x - q[0]) * k;
+      b.rotation.y = q[1] + (b.rotation.y - q[1]) * k;
+      b.rotation.z = q[2] + (b.rotation.z - q[2]) * k;
+      b.position.y = q[3] + (b.position.y - q[3]) * k;
+    }
+  }
+
+  function poseFighter(f) {
+    const p = f.parts;
+    const sc = f.char.scale;
+    resetPose(p);
+    // base offsets scale
+    p.pelvis.position.y *= sc;
+    p.torso.position.y *= sc;
+
+    const t = f.animClock;
+
+    // 全状態共通の僅かな呼吸
+    p.torso.rotation.x += Math.sin(t * 1.8) * 0.015;
+
+    switch (f.state) {
+      case 'idle': {
+        const bob = Math.sin(t * 2.0);
+        const sway = Math.sin(t * 1.05);
+        p.pelvis.position.y += bob * 0.012 * sc;
+        p.pelvis.rotation.z = sway * 0.045;        // 体重を左右に移す
+        p.pelvis.rotation.y = sway * 0.05;
+        p.torso.rotation.z = -sway * 0.035;        // 上体は逆に傾けてバランス
+        p.torso.rotation.x = 0.04;
+        p.head.rotation.y = Math.sin(t * 0.7) * 0.09;  // 視線がわずかに動く
+        p.head.rotation.z = sway * 0.025;
+        p.armL.shoulder.rotation.x = bob * 0.05 + 0.06;
+        p.armR.shoulder.rotation.x = -bob * 0.05 + 0.06;
+        p.armL.shoulder.rotation.z = 0.13;
+        p.armR.shoulder.rotation.z = -0.13;
+        p.armL.elbow.rotation.x = -0.38;
+        p.armR.elbow.rotation.x = -0.38;
+        p.legL.knee.rotation.x = -0.06;            // 軽く膝を緩めて立つ
+        p.legR.knee.rotation.x = -0.06;
+        break;
+      }
+      case 'walk': {
+        const w = f.animClock * 7;
+        const s = Math.sin(w), c = Math.sin(w + 1.0);
+        p.legL.hip.rotation.x = s * 0.5;
+        p.legR.hip.rotation.x = -s * 0.5;
+        p.legL.knee.rotation.x = Math.max(0, c) * 0.75;
+        p.legR.knee.rotation.x = Math.max(0, -c) * 0.75;
+        p.armL.shoulder.rotation.x = -s * 0.42;     // 腕は脚と逆位相で振る
+        p.armR.shoulder.rotation.x = s * 0.42;
+        p.armL.shoulder.rotation.z = 0.1;
+        p.armR.shoulder.rotation.z = -0.1;
+        p.armL.elbow.rotation.x = -0.5;
+        p.armR.elbow.rotation.x = -0.5;
+        p.pelvis.position.y += Math.abs(s) * 0.035 * sc;
+        p.pelvis.rotation.y = s * 0.13;             // 骨盤の回旋
+        p.torso.rotation.y = -s * 0.09;             // 上半身は逆にひねる
+        p.torso.rotation.x = 0.1;                   // やや前傾
+        p.head.rotation.y = s * 0.04;
+        break;
+      }
+      case 'crouch': {
+        p.pelvis.position.y = 0.55 * sc;
+        p.legL.hip.rotation.x = 1.4;
+        p.legR.hip.rotation.x = 1.4;
+        p.legL.knee.rotation.x = -2.2;
+        p.legR.knee.rotation.x = -2.2;
+        p.torso.rotation.x = 0.35;
+        p.armL.shoulder.rotation.x = 0.6;
+        p.armR.shoulder.rotation.x = 0.6;
+        p.armL.elbow.rotation.x = -0.6;
+        p.armR.elbow.rotation.x = -0.6;
+        break;
+      }
+      case 'guard': {
+        p.armL.shoulder.rotation.x = -1.4;
+        p.armL.shoulder.rotation.z = 0.6;
+        p.armL.elbow.rotation.x = -1.7;
+        p.armR.shoulder.rotation.x = -1.4;
+        p.armR.shoulder.rotation.z = -0.6;
+        p.armR.elbow.rotation.x = -1.7;
+        p.torso.rotation.x = 0.08;
+        p.legL.hip.rotation.x = 0.25;
+        p.legR.hip.rotation.x = 0.25;
+        p.legL.knee.rotation.x = -0.5;
+        p.legR.knee.rotation.x = -0.5;
+        p.pelvis.position.y = 0.85 * sc;
+        break;
+      }
+      case 'punch': {
+        const a = f._attackData;
+        const st = f.stateTime;
+        let phase, t2;
+        if (st < a.startup) { phase = 0; t2 = st / a.startup; }
+        else if (st < a.startup + a.active) { phase = 1; t2 = (st - a.startup) / a.active; }
+        else { phase = 2; t2 = 1 - (st - a.startup - a.active) / a.recovery; }
+
+        // 反対腕で構え、メイン腕（右）でパンチ
+        if (phase === 0) {
+          p.armR.shoulder.rotation.x = -0.4 * t2;
+          p.armR.elbow.rotation.x = -1.6 * t2;
+          p.torso.rotation.y = -0.5 * t2 * f.facing;
+        } else if (phase === 1) {
+          p.armR.shoulder.rotation.x = -1.6;
+          p.armR.elbow.rotation.x = -0.05;
+          p.torso.rotation.y = (-0.5 + 0.9 * t2) * f.facing;
+        } else {
+          const r = Math.max(0, t2);
+          p.armR.shoulder.rotation.x = -1.6 * r;
+          p.armR.elbow.rotation.x = -0.1 * r;
+          p.torso.rotation.y = 0.3 * r * f.facing;
+        }
+        // 構え腕
+        p.armL.shoulder.rotation.x = -0.8;
+        p.armL.shoulder.rotation.z = 0.4;
+        p.armL.elbow.rotation.x = -1.5;
+        if (a.key === 'cpunch') {
+          p.pelvis.position.y = 0.62 * sc;
+          p.legL.hip.rotation.x = 1.0;
+          p.legR.hip.rotation.x = 1.0;
+          p.legL.knee.rotation.x = -1.8;
+          p.legR.knee.rotation.x = -1.8;
+        } else if (a.key === 'jpunch') {
+          p.legL.hip.rotation.x = 0.3;
+          p.legR.hip.rotation.x = 0.3;
+          p.legL.knee.rotation.x = -0.8;
+          p.legR.knee.rotation.x = -0.8;
+        }
+        break;
+      }
+      case 'kick': {
+        const a = f._attackData;
+        const st = f.stateTime;
+        let phase, t2;
+        if (st < a.startup) { phase = 0; t2 = st / a.startup; }
+        else if (st < a.startup + a.active) { phase = 1; t2 = (st - a.startup) / a.active; }
+        else { phase = 2; t2 = 1 - (st - a.startup - a.active) / a.recovery; }
+
+        const sign = 1;
+        if (phase === 0) {
+          p.legR.hip.rotation.x = -0.6 * t2 * sign;
+          p.legR.knee.rotation.x = -1.4 * t2;
+          p.torso.rotation.x = 0.25 * t2;
+        } else if (phase === 1) {
+          p.legR.hip.rotation.x = -2.0 * sign;
+          p.legR.knee.rotation.x = -0.1;
+          p.torso.rotation.x = 0.25;
+        } else {
+          const r = Math.max(0, t2);
+          p.legR.hip.rotation.x = -2.0 * r * sign;
+          p.legR.knee.rotation.x = -0.1 * r;
+          p.torso.rotation.x = 0.25 * r;
+        }
+        // 支え足
+        p.legL.knee.rotation.x = -0.2;
+        // 腕
+        p.armL.shoulder.rotation.x = -0.4;
+        p.armR.shoulder.rotation.x = -0.2;
+        p.armR.shoulder.rotation.z = -0.3;
+        p.armR.elbow.rotation.x = -1.4;
+        if (a.key === 'ckick') {
+          // 下段キック
+          p.pelvis.position.y = 0.55 * sc;
+          p.legR.hip.rotation.x = -1.2 - phase * 0.3;
+          p.torso.rotation.x = 0.6;
+        }
+        break;
+      }
+      case 'hit': {
+        const d = Math.min(1, f.stateTime / 4);                        // 衝撃でのけぞる
+        const recover = Math.max(0, Math.min(1, (f.stateTime - 7) / 12)); // 徐々に立て直す
+        const lean = d * (1 - recover);
+        p.torso.rotation.x = -0.6 * lean;
+        p.torso.rotation.z = 0.12 * lean;
+        p.head.rotation.x = -0.4 * lean;
+        p.head.rotation.z = 0.15 * lean;
+        // 後ろ足で踏ん張り、前足を浮かせてよろける
+        p.legL.hip.rotation.x = -0.35 * lean;
+        p.legR.hip.rotation.x = 0.45 * lean;
+        p.legL.knee.rotation.x = -0.25 - 0.3 * lean;
+        p.legR.knee.rotation.x = -0.55 * lean;
+        // 腕が泳ぐ
+        p.armL.shoulder.rotation.x = 0.7 * lean; p.armL.shoulder.rotation.z = 0.4 * lean;
+        p.armR.shoulder.rotation.x = 0.6 * lean; p.armR.shoulder.rotation.z = -0.5 * lean;
+        p.armL.elbow.rotation.x = -0.3; p.armR.elbow.rotation.x = -0.3;
+        break;
+      }
+      case 'ko': {
+        const t2 = Math.min(1, f.stateTime / 36);
+        // 後方に転倒
+        f.root.rotation.z = f.facing * Math.PI / 2 * t2;
+        p.torso.rotation.x = -0.4;
+        p.armL.shoulder.rotation.x = 0.6;
+        p.armR.shoulder.rotation.x = 0.6;
+        p.legL.knee.rotation.x = -0.5;
+        p.legR.knee.rotation.x = -0.5;
+        break;
+      }
+      case 'jump': {
+        p.armL.shoulder.rotation.x = -0.6;
+        p.armR.shoulder.rotation.x = -0.6;
+        p.legL.hip.rotation.x = 0.4;
+        p.legR.hip.rotation.x = 0.4;
+        p.legL.knee.rotation.x = -1.0;
+        p.legR.knee.rotation.x = -1.0;
+        break;
+      }
+      case 'sidestep': {
+        const t2 = Math.min(1, f.stateTime / 8);
+        p.torso.rotation.z = (f.stepDir > 0 ? 0.15 : -0.15) * t2;
+        p.legL.knee.rotation.x = -0.5 * t2;
+        p.legR.knee.rotation.x = -0.5 * t2;
+        break;
+      }
+    }
+
+    // === 追加関節の自然な追従（脊椎2段・首・足首・手首・指） ===
+    // 胸は腹のひねり/傾きに連動し、上半身が2段にしなる
+    p.chest.rotation.x = p.torso.rotation.x * 0.5 + Math.sin(t * 1.8) * 0.02;
+    p.chest.rotation.y = p.torso.rotation.y * 0.45;
+    p.chest.rotation.z = p.torso.rotation.z * 0.45;
+    // 首は頭と胸の中間でなめらかに追従
+    p.neck.rotation.x = p.head.rotation.x * 0.35 - p.torso.rotation.x * 0.12;
+    p.neck.rotation.y = p.head.rotation.y * 0.3 + p.chest.rotation.y * 0.4;
+    // 足首は膝の曲げに合わせて接地を保つ
+    // 接地時は足裏を地面と平行に保つ（簡易IK）。空中・蹴り足は素直に伸ばす
+    if (f.onGround && f.state !== 'jump' && f.state !== 'kick') {
+      const aL = p.legL.hip.rotation.x + p.legL.knee.rotation.x;
+      const aR = p.legR.hip.rotation.x + p.legR.knee.rotation.x;
+      p.legL.ankle.rotation.x = Math.max(-0.8, Math.min(0.8, -aL * 0.62));
+      p.legR.ankle.rotation.x = Math.max(-0.8, Math.min(0.8, -aR * 0.62));
+    } else {
+      p.legL.ankle.rotation.x = Math.max(-0.7, Math.min(0.7, -p.legL.knee.rotation.x * 0.4));
+      p.legR.ankle.rotation.x = Math.max(-0.7, Math.min(0.7, -p.legR.knee.rotation.x * 0.4));
+    }
+    // 握り（指）と手首：構え・攻撃・ガードで握り込む
+    let grip = 0.5, wristX = -0.05;
+    if (f.state === 'guard') grip = 1.3;
+    else if (f.state === 'punch') { grip = 1.4; wristX = -0.18; }
+    else if (f.state === 'kick' || f.state === 'hit') grip = 0.85;
+    else if (f.state === 'ko') grip = 0.2;
+    p.armL.fingers.rotation.x = grip; p.armR.fingers.rotation.x = grip;
+    p.armL.wrist.rotation.x = wristX; p.armR.wrist.rotation.x = wristX;
+  }
+
+  // ========= ファイター更新 =========
+  function updateFighter(f, foe, inp) {
+    f.animClock += 1/60;
+    f.stateTime += 1;
+
+    // フェイシング自動
+    const desiredFacing = (foe.pos.x > f.pos.x) ? 1 : -1;
+    if (Math.abs(foe.pos.x - f.pos.x) > 0.1) {
+      f.facing = desiredFacing;
+    }
+
+    // 状態に応じた更新
+    if (f.state === 'ko') {
+      f.vel.y -= 0.25;
+      f.pos.y += f.vel.y * 0.06;
+      if (f.pos.y < 0) { f.pos.y = 0; f.vel.y *= -0.3; if (Math.abs(f.vel.y) < 0.5) f.vel.y = 0; }
+      f.pos.x += f.vel.x * 0.08;
+      f.vel.x *= 0.9;
+      if (f.flashTime > 0) f.flashTime--;
+      return;
+    }
+
+    // ガード状態
+    f.guarding = !!inp.guard && f.onGround && !['punch','kick','hit'].includes(f.state);
+
+    // しゃがみ
+    if (inp.crouch && f.onGround && !['punch','kick','hit'].includes(f.state)) {
+      f.crouching = true;
+    } else {
+      f.crouching = false;
+    }
+
+    // スタン中
+    if (f.stun > 0) {
+      f.stun--;
+      // ヒット復帰
+      if (f.state === 'hit' && f.stun === 0) {
+        f.state = 'idle';
+        f.stateTime = 0;
+      }
+    } else {
+      // 入力処理（攻撃中・ヒット中以外）
+      if (!['punch','kick','hit'].includes(f.state)) {
+        // 攻撃発動
+        if (inp.punch) {
+          f.state = 'punch';
+          f.stateTime = 0;
+          f.attackHit = false;
+          f._attackData = attackOf(f, 'punch');
+          sfx.punch();
+        } else if (inp.kick) {
+          f.state = 'kick';
+          f.stateTime = 0;
+          f.attackHit = false;
+          f._attackData = attackOf(f, 'kick');
+          sfx.kick();
+        } else if (inp.jump && f.onGround) {
+          f.vel.y = 7.0 * f.char.jump;
+          f.onGround = false;
+          f.state = 'jump';
+          f.stateTime = 0;
+        } else if (f.guarding) {
+          if (f.state !== 'guard') { f.state = 'guard'; f.stateTime = 0; }
+        } else if (f.crouching) {
+          if (f.state !== 'crouch') { f.state = 'crouch'; f.stateTime = 0; }
+        } else if ((inp.left || inp.right) && f.onGround) {
+          if (f.state !== 'walk') { f.state = 'walk'; f.stateTime = 0; }
+        } else if (f.onGround) {
+          if (f.state !== 'idle') { f.state = 'idle'; f.stateTime = 0; }
+        }
+      }
+    }
+
+    // 攻撃中の終了処理＋踏み込み（体重を前に乗せる）
+    if (f.state === 'punch' || f.state === 'kick') {
+      const a = f._attackData;
+      const total = a.startup + a.active + a.recovery;
+      // 発生直前〜攻撃判定中に前方へ踏み込む
+      if (f.onGround && f.stateTime >= a.startup - 2 && f.stateTime <= a.startup + a.active) {
+        const lunge = (f.state === 'kick') ? 3.2 : 2.2;
+        f.vel.x = f.facing * lunge * f.char.speed;
+      }
+      if (f.stateTime >= total) {
+        f.state = f.onGround ? 'idle' : 'jump';
+        f.stateTime = 0;
+        f.attackHit = false;
+      }
+    }
+
+    // 移動
+    const grounded = f.onGround;
+    let speed = 0.07 * f.char.speed;
+    if (!grounded) speed *= 0.5;
+    if (f.state === 'hit' || f.state === 'ko') { /* no input movement */ }
+    else if (f.state === 'punch' || f.state === 'kick') {
+      f.vel.x *= 0.85;
+    } else {
+      if (inp.left) f.vel.x = -speed * 60; // ~speed units/sec
+      else if (inp.right) f.vel.x = speed * 60;
+      else if (grounded) f.vel.x *= 0.7;
+      // サイドステップ
+      if (grounded) {
+        if (inp.sideUp) f.vel.z = -speed * 50;
+        else if (inp.sideDown) f.vel.z = speed * 50;
+        else f.vel.z *= 0.7;
+      }
+    }
+
+    // ヒット中ノックバック減衰
+    if (f.state === 'hit') f.vel.x *= 0.85;
+
+    // 重力
+    if (!f.onGround) {
+      f.vel.y -= 0.3;
+    }
+
+    // 位置更新
+    f.pos.x += f.vel.x * (1/60);
+    f.pos.z += f.vel.z * (1/60);
+    f.pos.y += f.vel.y * (1/60);
+
+    // 着地
+    if (f.pos.y <= 0 && f.vel.y <= 0) {
+      f.pos.y = 0;
+      f.vel.y = 0;
+      if (!f.onGround) {
+        f.onGround = true;
+        if (f.state === 'jump') { f.state = 'idle'; f.stateTime = 0; }
+      }
+    }
+
+    // Z軸制限
+    if (f.pos.z > 1.5) f.pos.z = 1.5;
+    if (f.pos.z < -1.5) f.pos.z = -1.5;
+
+    // フラッシュタイマー
+    if (f.flashTime > 0) f.flashTime--;
+  }
+
+  // ========= めり込み防止 =========
+  function separate(a, b) {
+    const dx = b.pos.x - a.pos.x;
+    const dz = b.pos.z - a.pos.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const minD = 0.85;
+    if (dist > 0 && dist < minD) {
+      const push = (minD - dist) / 2;
+      const nx = dx / dist, nz = dz / dist;
+      a.pos.x -= nx * push; a.pos.z -= nz * push;
+      b.pos.x += nx * push; b.pos.z += nz * push;
+    }
+  }
+
+  // ========= リングアウト =========
+  function checkRingOut(f) {
+    const dist = Math.sqrt(f.pos.x*f.pos.x + f.pos.z*f.pos.z);
+    if (dist > ringRadius - 0.4 && f.state !== 'ko' && !f.ringOut) {
+      // 重力で落下
+      f.onGround = false;
+      // リング外と判定するのは少し外に出てから
+      if (dist > ringRadius - 0.1) {
+        f.ringOut = true;
+        f.state = 'ko';
+        f.stateTime = 0;
+        f.vel.y = 1;
+      }
+    }
+  }
+
+  // ========= CPU AI =========
+  function cpuAI(f, foe) {
+    f.aiTimer++;
+    const dx = foe.pos.x - f.pos.x;
+    const dist = Math.abs(dx);
+    const fwd = Math.sign(dx);
+    const inp = { left:false, right:false, jump:false, crouch:false, sideUp:false, sideDown:false, punch:false, kick:false, guard:false };
+
+    if (f.state === 'hit' || f.state === 'ko') return inp;
+    if (f.stun > 0) return inp;
+
+    // ときどき「何もしない」隙を作り、プレイヤーに反撃の余地を与える
+    if (f.aiTimer % 150 < 30) return inp;
+
+    // 相手の攻撃に対するリアクション（控えめ）
+    const foeAttacking = (foe.state === 'punch' || foe.state === 'kick') && !foe.attackHit;
+    if (foeAttacking && dist < 2.3 && Math.random() < 0.28) {
+      inp.guard = true;
+      if (Math.random() < 0.25) {
+        if (Math.random() < 0.5) inp.sideUp = true; else inp.sideDown = true;
+        inp.guard = false;
+      }
+      return inp;
+    }
+
+    // 距離別行動
+    if (dist > 3.0) {
+      // ゆっくり接近（毎フレームは詰めない）
+      if (f.aiTimer % 4 !== 0) { if (fwd > 0) inp.right = true; else inp.left = true; }
+    } else if (dist > 1.8) {
+      // 中距離：たまに蹴る・揺さぶる
+      if (f.aiTimer % 64 === 0 && Math.random() < 0.3) inp.kick = true;
+      else if (f.aiTimer % 40 === 0 && Math.random() < 0.2) {
+        if (Math.random() < 0.5) inp.sideUp = true; else inp.sideDown = true;
+      } else if (f.aiTimer % 3 !== 0) { if (fwd > 0) inp.right = true; else inp.left = true; }
+    } else {
+      // 接近戦：攻撃頻度を抑える
+      const r = Math.random();
+      if (f.aiTimer % 34 === 0) {
+        if (r < 0.40) inp.punch = true;
+        else if (r < 0.62) inp.kick = true;
+        else if (r < 0.78) inp.guard = true;
+        else { if (fwd > 0) inp.left = true; else inp.right = true; } // 間合いを取る
+      } else if (r < 0.06) {
+        inp.guard = true;
+      }
+    }
+    return inp;
+  }
+
+  // ========= ゲームフロー =========
+  function startRound(n) {
+    G.round = n;
+    G.roundClock = 60 * 60;
+    G.phase = 'intro';
+    G.timer = 150;
+    G.introCue = 0;
+    // 位置リセット
+    P1.pos.set(-3.0, 0, 0); P1.vel.set(0,0,0); P1.hp = P1.maxHp; P1.state = 'idle'; P1.stateTime = 0; P1.stun = 0; P1.onGround = true; P1.ringOut = false; P1.facing = 1; P1.root.rotation.set(0, Math.PI/2, 0);
+    P2.pos.set(3.0, 0, 0); P2.vel.set(0,0,0); P2.hp = P2.maxHp; P2.state = 'idle'; P2.stateTime = 0; P2.stun = 0; P2.onGround = true; P2.ringOut = false; P2.facing = -1; P2.root.rotation.set(0, -Math.PI/2, 0);
+    P1.attackHit = false; P2.attackHit = false;
+    showBanner('ROUND ' + n, '', 90);
+    sfx.bell();
+  }
+
+  function showBanner(big, sub, time) {
+    const b = document.getElementById('banner');
+    b.innerHTML = big + (sub ? '<span class="sub">' + sub + '</span>' : '');
+    b.classList.add('on');
+    G.bannerTimer = time;
+  }
+  function hideBanner() {
+    document.getElementById('banner').classList.remove('on');
+  }
+
+  function endRound(winner) {
+    G.phase = 'roundend';
+    G.timer = 180;
+    if (winner === 1) { G.matchWins[0]++; sfx.win(); }
+    else if (winner === 2) { G.matchWins[1]++; sfx.win(); }
+    else { /* draw */ }
+    updateWins();
+    let banner = '', sub = '';
+    if (winner === 1) {
+      banner = P1.char.name + ' WINS';
+      sub = P2.ringOut ? 'RING OUT' : (P2.hitsTaken === 0 ? 'PERFECT' : 'K.O.');
+    } else if (winner === 2) {
+      banner = P2.char.name + ' WINS';
+      sub = P1.ringOut ? 'RING OUT' : (P1.hitsTaken === 0 ? 'PERFECT' : 'K.O.');
+    } else {
+      banner = 'DRAW'; sub = 'TIME UP';
+    }
+    showBanner(banner, sub, 180);
+
+    if (G.matchWins[0] >= 2 || G.matchWins[1] >= 2) {
+      G.matchOverPending = true;
+    }
+  }
+
+  function endMatch() {
+    G.phase = 'matchover';
+    const win = G.matchWins[0] >= 2 ? 1 : 2;
+    const winner = win === 1 ? P1.char : P2.char;
+    document.getElementById('resultText').textContent = winner.name + ' WINS!';
+    document.getElementById('resultSub').textContent = (win === 1 ? G.matchWins[0] : G.matchWins[1]) + '-' + (win === 1 ? G.matchWins[1] : G.matchWins[0]);
+    document.getElementById('result').classList.remove('hidden');
+  }
+
+  function restartMatch() {
+    G.matchWins = [0, 0];
+    updateWins();
+    startRound(1);
+  }
+
+  function updateWins() {
+    const w1 = document.getElementById('wins1').children;
+    const w2 = document.getElementById('wins2').children;
+    for (let i = 0; i < 2; i++) {
+      w1[i].classList.toggle('on', i < G.matchWins[0]);
+      w2[i].classList.toggle('on', i < G.matchWins[1]);
+    }
+  }
+
+  function updateHUD() {
+    document.getElementById('hp1').style.width = (P1.hp / P1.maxHp * 100) + '%';
+    document.getElementById('hp2').style.width = (P2.hp / P2.maxHp * 100) + '%';
+    const t = Math.ceil(G.roundClock / 60);
+    document.getElementById('timer').textContent = t;
+    document.getElementById('timer').classList.toggle('warn', t <= 10);
+    document.getElementById('round').textContent = 'ROUND ' + G.round;
+  }
+
+  // ========= カメラ =========
+  function updateCamera() {
+    if (!P1 || !P2) return;
+    const midX = (P1.pos.x + P2.pos.x) / 2;
+    const midZ = (P1.pos.z + P2.pos.z) / 2;
+    const dx = Math.abs(P1.pos.x - P2.pos.x);
+    const camZ = Math.max(7.5, 6.5 + dx * 0.5);
+    const camY = 3.4 + Math.max(P1.pos.y, P2.pos.y) * 0.3;
+    camera.position.x += (midX * 0.5 - camera.position.x) * 0.06;
+    camera.position.z += (midZ + camZ - camera.position.z) * 0.06;
+    camera.position.y += (camY - camera.position.y) * 0.06;
+    const lookY = 1.2 + Math.max(P1.pos.y, P2.pos.y) * 0.15;
+    camera.lookAt(midX * 0.6, lookY, midZ);
+  }
+
+  // ========= フラッシュ =========
+  function updateFlash() {
+    if (G.flash && G.flash.time > 0) {
+      const intensity = G.flash.time / 6;
+      rimL.intensity = 0.8 + intensity * 2;
+      rimR.intensity = 0.8 + intensity * 2;
+      sun.intensity = 1.2 + intensity * 0.4;
+      G.flash.time--;
+    } else {
+      rimL.intensity += (0.8 - rimL.intensity) * 0.2;
+      rimR.intensity += (0.8 - rimR.intensity) * 0.2;
+      sun.intensity += (1.2 - sun.intensity) * 0.2;
+    }
+  }
+
+  // ========= 表示反映 =========
+  function applyTransform(f) {
+    f.root.position.set(f.pos.x, f.pos.y, f.pos.z);
+    if (f.state !== 'ko') {
+      // facing: -1 = 左を向く（-X方向）、+1 = 右を向く（+X方向）
+      // デフォルト前方は +Z。+Xを向くには +π/2、-Xを向くには -π/2
+      const targetY = f.facing > 0 ? Math.PI/2 : -Math.PI/2;
+      // スムージング
+      let cur = f.root.rotation.y;
+      const diff = ((targetY - cur + Math.PI*3) % (Math.PI*2)) - Math.PI;
+      f.root.rotation.y = cur + diff * 0.35;
+    }
+    // フラッシュ表示
+    const flash = f.flashTime > 0 ? (f.flashTime / 8) : 0;
+    if (f.parts.flashMats) f.parts.flashMats.forEach(m => m.emissive.setRGB(flash * 0.8, flash * 0.2, flash * 0.2));
+  }
+
+  // ========= メインループ =========
+  let lastTime = performance.now();
+  let accumulator = 0;
+  const TICK_MS = 1000/60;
+  function loop() {
+    requestAnimationFrame(loop);
+    const now = performance.now();
+    let dt = now - lastTime;
+    lastTime = now;
+    if (dt > 100) dt = 100;
+    accumulator += dt;
+    while (accumulator >= TICK_MS) {
+      tick();
+      accumulator -= TICK_MS;
+    }
+    composer.render();
+  }
+
+  function tick() {
+    if (G.phase === 'menu') return;
+
+    // バナータイマー
+    if (G.bannerTimer > 0) {
+      G.bannerTimer--;
+      if (G.bannerTimer === 0) hideBanner();
+    }
+
+    if (G.phase === 'intro') {
+      G.timer--;
+      // intro phase: only pose
+      poseFighterSmooth(P1); poseFighterSmooth(P2);
+      applyTransform(P1); applyTransform(P2);
+      updateCamera();
+      updateFlash();
+      if (G.timer <= 0) {
+        G.phase = 'fight';
+        showBanner('FIGHT!', '', 60);
+        sfx.bell();
+      }
+      return;
+    }
+
+    if (G.phase === 'fight') {
+      // 入力取得
+      const i1 = getInput1P();
+      const i2 = P2.cpu ? cpuAI(P2, P1) : getInput2P();
+
+      // 更新
+      updateFighter(P1, P2, i1);
+      updateFighter(P2, P1, i2);
+
+      // 当たり判定
+      P1._attackData = (P1.state === 'punch' || P1.state === 'kick') ? P1._attackData : null;
+      P2._attackData = (P2.state === 'punch' || P2.state === 'kick') ? P2._attackData : null;
+      tryHit(P1, P2);
+      tryHit(P2, P1);
+
+      // 接触処理
+      separate(P1, P2);
+      checkRingOut(P1);
+      checkRingOut(P2);
+
+      // タイマー
+      G.roundClock--;
+
+      // 勝敗判定
+      if (P1.hp <= 0 && P2.hp <= 0) {
+        endRound(0);
+      } else if (P1.hp <= 0 || P1.ringOut) {
+        endRound(2);
+      } else if (P2.hp <= 0 || P2.ringOut) {
+        endRound(1);
+      } else if (G.roundClock <= 0) {
+        if (P1.hp > P2.hp) endRound(1);
+        else if (P2.hp > P1.hp) endRound(2);
+        else endRound(0);
+      }
+
+      poseFighterSmooth(P1); poseFighterSmooth(P2);
+      applyTransform(P1); applyTransform(P2);
+      updateCamera();
+      updateFlash();
+      updateHUD();
+    } else if (G.phase === 'roundend') {
+      G.timer--;
+      // KOアニメ続行
+      if (P1.state === 'ko') updateFighter(P1, P2, {});
+      if (P2.state === 'ko') updateFighter(P2, P1, {});
+      poseFighterSmooth(P1); poseFighterSmooth(P2);
+      applyTransform(P1); applyTransform(P2);
+      updateCamera();
+      updateFlash();
+      if (G.timer <= 0) {
+        if (G.matchOverPending) {
+          G.matchOverPending = false;
+          endMatch();
+        } else {
+          startRound(G.round + 1);
+        }
+      }
+    } else if (G.phase === 'matchover') {
+      poseFighterSmooth(P1); poseFighterSmooth(P2);
+      applyTransform(P1); applyTransform(P2);
+      updateCamera();
+      updateFlash();
+    }
+
+    clearPressed();
+  }
+
+  // ========= メニュー =========
+  function buildMenu() {
+    const grid = document.getElementById('charGrid');
+    grid.innerHTML = '';
+    CHARS.forEach((c, i) => {
+      const el = document.createElement('div');
+      el.className = 'char';
+      el.dataset.idx = i;
+      el.innerHTML = `
+        <div class="swatch" style="background:linear-gradient(90deg, #${c.col.toString(16).padStart(6,'0')}, #${c.dark.toString(16).padStart(6,'0')})"></div>
+        ${c.name}<span class="jp">${c.jp}</span>
+        <span class="ty">${c.type}</span>
+      `;
+      el.addEventListener('click', (e) => onCharClick(i, e));
+      el.addEventListener('contextmenu', (e) => { e.preventDefault(); onCharRightClick(i); });
+      grid.appendChild(el);
+    });
+    refreshSelectUI();
+  }
+  function onCharClick(idx, ev) {
+    // Shiftキー押しながらでP2、それ以外はP1
+    if (G.mode === '2p' && (ev.shiftKey || G.selP1 !== null && G.selP2 === null && G.selP1 !== idx)) {
+      G.selP2 = idx;
+    } else {
+      G.selP1 = idx;
+      if (G.mode === 'cpu') {
+        // CPUは自動で別キャラ
+        let r;
+        do { r = Math.floor(Math.random() * CHARS.length); } while (r === idx);
+        G.selP2 = r;
+      }
+    }
+    refreshSelectUI();
+  }
+  function onCharRightClick(idx) {
+    if (G.mode === '2p') {
+      G.selP2 = idx;
+      refreshSelectUI();
+    }
+  }
+  function refreshSelectUI() {
+    const cells = document.querySelectorAll('.char');
+    cells.forEach((el, i) => {
+      el.classList.remove('p1','p2');
+      el.querySelectorAll('.badge').forEach(b => b.remove());
+      if (G.selP1 === i) {
+        el.classList.add('p1');
+        const b = document.createElement('div'); b.className = 'badge b1'; b.textContent = 'P1'; el.appendChild(b);
+      }
+      if (G.selP2 === i) {
+        el.classList.add('p2');
+        const b = document.createElement('div'); b.className = 'badge b2'; b.textContent = 'P2'; el.appendChild(b);
+      }
+    });
+    const ready = G.selP1 !== null && G.selP2 !== null;
+    document.getElementById('startBtn').disabled = !ready;
+  }
+
+  document.getElementById('modeCpu').addEventListener('click', () => {
+    G.mode = 'cpu';
+    document.getElementById('modeCpu').classList.add('on');
+    document.getElementById('modeVs').classList.remove('on');
+    if (G.selP1 !== null) {
+      let r; do { r = Math.floor(Math.random() * CHARS.length); } while (r === G.selP1);
+      G.selP2 = r;
+    }
+    refreshSelectUI();
+  });
+  document.getElementById('modeVs').addEventListener('click', () => {
+    G.mode = '2p';
+    document.getElementById('modeVs').classList.add('on');
+    document.getElementById('modeCpu').classList.remove('on');
+    refreshSelectUI();
+  });
+  document.getElementById('startBtn').addEventListener('click', () => {
+    if (G.selP1 === null || G.selP2 === null) return;
+    initAudio();
+    startFight();
+  });
+
+  function startFight() {
+    document.getElementById('menu').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('bottom').classList.remove('hidden');
+    document.getElementById('topright').classList.remove('hidden');
+
+    // 既存ファイター破棄
+    if (P1) scene.remove(P1.root);
+    if (P2) scene.remove(P2.root);
+
+    const c1 = CHARS[G.selP1], c2 = CHARS[G.selP2];
+    P1 = makeFighter(c1, -2.5, 1);
+    P2 = makeFighter(c2, 2.5, -1);
+    if (G.mode === 'cpu') P2.cpu = true;
+
+    document.getElementById('name1').innerHTML = c1.name + '<span class="jp">' + c1.jp + '</span>';
+    document.getElementById('name2').innerHTML = c2.name + '<span class="jp">' + c2.jp + '</span>';
+    document.getElementById('name2').style.textAlign = 'right';
+
+    G.matchWins = [0, 0];
+    updateWins();
+    startRound(1);
+  }
+
+  document.getElementById('muteBtn').addEventListener('click', (e) => {
+    muted = !muted;
+    e.target.textContent = muted ? '🔇 SOUND' : '🔊 SOUND';
+  });
+  document.getElementById('menuBtn').addEventListener('click', () => {
+    backToMenu();
+  });
+  document.getElementById('rematchBtn').addEventListener('click', () => {
+    document.getElementById('result').classList.add('hidden');
+    startFight();
+  });
+  document.getElementById('backMenuBtn').addEventListener('click', () => {
+    document.getElementById('result').classList.add('hidden');
+    backToMenu();
+  });
+
+  function backToMenu() {
+    document.getElementById('menu').classList.remove('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('bottom').classList.add('hidden');
+    document.getElementById('topright').classList.add('hidden');
+    document.getElementById('result').classList.add('hidden');
+    hideBanner();
+    G.phase = 'menu';
+    if (P1) { scene.remove(P1.root); P1 = null; }
+    if (P2) { scene.remove(P2.root); P2 = null; }
+  }
+
+  // ========= リサイズ =========
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
+    bloom.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+
+  // 初期化
+  buildMenu();
+  loop();
+})();
+</script>
+</body>
+</html>

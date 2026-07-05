@@ -60,6 +60,7 @@ jobs:
           cp manifest.webmanifest public/manifest.webmanifest
           cp sw.js public/sw.js
           cp -R icons public/icons
+          cp hokkaido-planC.html hokkaido-route.html team-org.html fighter.html vf6.html public/
           touch public/.nojekyll
 
       - name: Configure Pages

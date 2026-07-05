@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AIチーム 組織表</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+    background: linear-gradient(160deg, #f4f6f9, #e7ecf2);
+    color: #23303a; padding: 26px 16px 50px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { text-align: center; font-size: 21px; margin: 2px 0 3px; }
+  .sub { text-align: center; color: #6b7785; font-size: 12px; margin-bottom: 22px; }
+
+  .pipe { width: 2px; height: 24px; background: #c2cad3; margin: 0 auto; }
+
+  .card { border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,.10); text-align: center; }
+  .card .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; margin-bottom: 6px; }
+  .card .name { font-size: 18px; font-weight: 800; letter-spacing: .5px; }
+  .card .role { font-size: 12px; margin-top: 4px; line-height: 1.5; }
+
+  .owner {
+    background: linear-gradient(135deg, #1f2d3d, #34465b);
+    color: #fff; border: 2px solid #e8b53d; max-width: 580px; margin: 0 auto;
+  }
+  .owner .name { font-size: 22px; color: #ffe6a3; }
+  .owner .role { color: #ccd6e1; }
+
+  .toprow { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; }
+  .hr-card { background: #fff7e6; border: 2px solid #e0a800; min-width: 290px; }
+  .hr-card .badge { background: #e0a800; color: #fff; }
+  .hr-card .name { color: #8a5a00; }
+  .pm-card { background: #e6f2f0; border: 2px solid #2f8f83; min-width: 290px; }
+  .pm-card .badge { background: #2f8f83; color: #fff; }
+  .pm-card .name { color: #1f5e57; }
+
+  .govern { text-align: center; margin: 16px 0 12px; font-size: 12px; color: #55606b; font-weight: 700; }
+
+  .depts { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; align-items: start; }
+  @media (max-width: 860px) { .depts { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .depts { grid-template-columns: 1fr; } }
+  .dept { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); display: flex; flex-direction: column; }
+  .dept-head { color: #fff; font-weight: 800; font-size: 13px; padding: 8px 10px; text-align: center; background: var(--c); }
+  .dept-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .agent { border-left: 4px solid var(--c); background: #f8fafc; border-radius: 6px; padding: 7px 9px; }
+  .agent b { font-size: 14px; }
+  .agent span { display: block; font-size: 11px; color: #5a6570; margin-top: 2px; line-height: 1.45; }
+  .agent .star { color: #e8a200; font-weight: 700; }
+
+  table.sumi { width: 100%; border-collapse: collapse; margin-top: 28px; font-size: 12px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .sumi caption { text-align: left; font-weight: 800; font-size: 13px; margin-bottom: 8px; color: #3a4651; }
+  .sumi th, .sumi td { border: 1px solid #e3e8ee; padding: 8px 10px; text-align: left; }
+  .sumi th { background: #eef2f7; white-space: nowrap; }
+  .count { text-align: center; margin-top: 20px; font-size: 12px; color: #3a4651; font-weight: 700; }
+  .foot { text-align: center; color: #8a95a1; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏢 AIチーム 組織表</h1>
+  <div class="sub">2026-05-30 現在 ｜ ロール切り替え方式（同一会話内でPMが最適ロールに切替）</div>
+
+  <!-- オーナー -->
+  <div class="card owner">
+    <div class="name">いけさん</div>
+    <div class="role">オーナー ｜ 本業：賃貸経営（法人＋個人事業） ＋ 資産形成・趣味</div>
+  </div>
+
+  <div class="pipe"></div>
+
+  <!-- 人事部長 ＋ PM -->
+  <div class="toprow">
+    <div class="card hr-card">
+      <div class="badge">人事部長</div>
+      <div class="name">てるひろ</div>
+      <div class="role">採用・組織設計・棲み分け調整・経験ログ管理<br>（＝チームを編成する役）</div>
+    </div>
+    <div class="card pm-card">
+      <div class="badge">常駐PM</div>
+      <div class="name">ツカサ</div>
+      <div class="role">依頼を分析し、最適ロールに切り替えて実行<br>（現場の司令塔）</div>
+    </div>
+  </div>
+
+  <div class="pipe"></div>
+  <div class="govern">▼ ツカサがロール切替で各部門を統括</div>
+
+  <!-- 部門 -->
+  <div class="depts">
+    <div class="dept" style="--c:#1e88e5">
+      <div class="dept-head">本業・事業</div>
+      <div class="dept-body">
+        <div class="agent"><b>ミツル</b><span>賃貸経営コンサル（地方戸建て・空室対策）</span></div>
+      </div>
+    </div>
+
+    <div class="dept" style="--c:#2e7d32">
+      <div class="dept-head">管理・財務</div>
+      <div class="dept-body">
+        <div class="agent"><b>ケイ</b><span>経理部（法人＋個人の2主体経理）</span></div>
+        <div class="agent"><b>マモル</b><span>法務部（法的リスクの一次チェック／弁護士ではない）</span></div>
+        <div class="agent"><b>ひかり</b><span>資産形成アドバイザー（横断把握・参謀／個別助言はしない）</span></div>
+      </div>
+    </div>
+
+    <div class="dept" style="--c:#f39c12">
+      <div class="dept-head">品質・保安</div>
+      <div class="dept-body">
+        <div class="agent"><b>ギンジ</b><span>品質保証部（批判的レビュー＝バグ・論理の穴）</span></div>
+        <div class="agent"><b>カイ</b><span>情報セキュリティ（漏洩防止・インシデント初動）</span></div>
+      </div>
+    </div>
+
+    <div class="dept" style="--c:#e53935">
+      <div class="dept-head">開発・保守</div>
+      <div class="dept-body">
+        <div class="agent"><b>レン</b><span>アプリ保守（単一HTMLアプリ・既存データ互換）</span></div>
+      </div>
+    </div>
+
+    <div class="dept" style="--c:#8e24aa">
+      <div class="dept-head">トラベル・ライフ</div>
+      <div class="dept-body">
+        <div class="agent"><b>ソラ</b><span>マイル・ポイント活用（ANA軸／空路・費用最適化）</span></div>
+        <div class="agent"><b>カケル</b> <span class="star">★今回採用</span><span>ツーリング行程設計（陸路・ルート・フェリー）</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 棲み分け -->
+  <table class="sumi">
+    <caption>混同しやすいペアの棲み分け</caption>
+    <thead>
+      <tr><th>ペア</th><th>境界線</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>ギンジ ⇔ カイ</td><td>バグ・品質＝ギンジ ／ セキュリティリスク＝カイ</td></tr>
+      <tr><td>ひかり ⇔ ソラ</td><td>投資・保険・運用＝ひかり ／ マイル・ポイント・特典航空券＝ソラ</td></tr>
+      <tr><td>ソラ ⇔ カケル</td><td>空路・費用最適化＝ソラ ／ 陸路・ツーリング行程＝カケル</td></tr>
+    </tbody>
+  </table>
+
+  <div class="count">構成：オーナー（いけさん） ＋ 人事部長 1名 ＋ エージェント 10名（PMツカサ含む）</div>
+  <div class="foot">配色は北海道ツーリングMAPの5色（青・緑・橙・赤・紫）と対応</div>
+</div>
+</body>
+</html>

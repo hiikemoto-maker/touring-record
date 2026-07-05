@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>北海道ツーリング 8日間ルート Plan B（道東込み・200km目安）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<style>
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Hiragino Sans", sans-serif; }
+  #map { height: 100%; }
+  .title {
+    position: absolute; top: 10px; left: 50px; right: 50px; z-index: 1000;
+    background: rgba(255,255,255,0.92); padding: 8px 12px; border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 13px; font-weight: 700; text-align: center;
+  }
+  .legend {
+    background: rgba(255,255,255,0.95); padding: 8px 10px; border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 12px; line-height: 1.7;
+  }
+  .legend i { display: inline-block; width: 22px; height: 4px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+  .legend .ferry { background: #888; height: 0; border-top: 3px dashed #888; }
+  .lodge-label {
+    background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px;
+    padding: 1px 5px; font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="title">🏍️ 北海道ツーリング 8日間 Plan B ｜ 生駒発・敦賀⇄苫小牧東フェリー往復 ｜ 道東込み・1日200km目安（実走5日 約980km）</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script>
+  const map = L.map('map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // [lat, lng, name]
+  const days = [
+    { label: '3日目: 苫小牧東→富良野・美瑛（約200km）', color: '#1e88e5', pts: [
+      [42.541,141.799,'苫小牧東港'],[43.06,142.62,'トマム'],[43.342,142.383,'富良野'],
+      [43.493,142.631,'青い池'],[43.589,142.466,'美瑛'] ] },
+    { label: '4日目: 美瑛→層雲峡→三国峠→ぬかびら（約190km）', color: '#2e7d32', pts: [
+      [43.589,142.466,'美瑛'],[43.771,142.365,'旭川'],[43.726,142.996,'層雲峡'],
+      [43.490,143.000,'三国峠'],[43.310,143.160,'ぬかびら源泉郷'] ] },
+    { label: '5日目: ぬかびら→ナイタイ→阿寒→摩周→川湯（約210km）', color: '#f39c12', pts: [
+      [43.310,143.160,'ぬかびら源泉郷'],[43.200,143.300,'ナイタイ高原牧場'],[43.248,143.553,'足寄'],
+      [43.451,144.097,'阿寒湖温泉'],[43.583,144.532,'摩周湖'],[43.623,144.341,'屈斜路湖(砂湯)'],
+      [43.628,144.452,'川湯温泉'] ] },
+    { label: '6日目: 川湯→（美幌峠）→阿寒→足寄→帯広（約190km）', color: '#e53935', pts: [
+      [43.628,144.452,'川湯温泉'],[43.451,144.097,'阿寒湖温泉'],[43.248,143.553,'足寄'],
+      [42.924,143.196,'帯広'] ] },
+    { label: '7日目: 帯広→日勝峠→苫小牧東港（約190km）', color: '#8e24aa', pts: [
+      [42.924,143.196,'帯広'],[42.882,142.601,'日勝峠'],[42.776,142.420,'日高'],
+      [42.575,141.942,'むかわ'],[42.541,141.799,'苫小牧東港'] ] }
+  ];
+
+  const allLatLng = [];
+  days.forEach(d => {
+    const line = d.pts.map(p => [p[0], p[1]]);
+    L.polyline(line, { color: d.color, weight: 4, opacity: 0.85 }).addTo(map);
+    d.pts.forEach(p => {
+      allLatLng.push([p[0], p[1]]);
+      L.circleMarker([p[0], p[1]], { radius: 5, color: d.color, fillColor: '#fff', fillOpacity: 1, weight: 2 })
+        .bindTooltip(p[2], { permanent: false }).addTo(map);
+    });
+  });
+
+  // 宿泊地（全て1.5万円以内）
+  const lodges = [
+    [42.633,141.605,'🛏️ 苫小牧 0.7〜1.0万（素泊）'],
+    [43.589,142.466,'🛏️ 美瑛 1.0〜1.4万（2食）'],
+    [43.310,143.160,'🛏️ ぬかびら温泉 1.0〜1.5万'],
+    [43.628,144.452,'🛏️ 川湯温泉 1.0〜1.5万'],
+    [42.924,143.196,'🛏️ 帯広 0.9〜1.3万（温泉付）']
+  ];
+  lodges.forEach(l => {
+    L.marker([l[0], l[1]]).addTo(map)
+      .bindTooltip(l[2], { permanent: true, direction: 'top', className: 'lodge-label', offset: [0,-6] });
+    allLatLng.push([l[0], l[1]]);
+  });
+
+  // 発着港
+  L.circleMarker([42.541,141.799], { radius: 7, color:'#000', fillColor:'#ffd200', fillOpacity:1, weight:2 })
+    .bindTooltip('⛴️ 発着：苫小牧東港（敦賀からフェリー往復）', { permanent: true, direction:'right' }).addTo(map);
+
+  map.fitBounds(allLatLng, { padding: [70, 70] });
+
+  // 凡例
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Plan B ルート凡例</b><br>' +
+      days.map(d => `<i style="background:${d.color}"></i>${d.label}`).join('<br>') +
+      '<br>🛏️ 宿泊地（全て1.5万円以内）' +
+      '<br><i class="ferry"></i>往復フェリー（敦賀⇄苫小牧東 / 海路）';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>

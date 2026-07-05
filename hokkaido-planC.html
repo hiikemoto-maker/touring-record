@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>北海道ツーリング 8日間ルート Plan C（舞鶴発・道央グランドループ）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<style>
+  html, body { margin: 0; height: 100%; font-family: -apple-system, "Hiragino Sans", sans-serif; }
+  #map { height: 100%; }
+  .title {
+    position: absolute; top: 10px; left: 50px; right: 50px; z-index: 1000;
+    background: rgba(255,255,255,0.92); padding: 8px 12px; border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 13px; font-weight: 700; text-align: center;
+  }
+  .legend {
+    background: rgba(255,255,255,0.95); padding: 8px 10px; border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 12px; line-height: 1.7;
+  }
+  .legend i { display: inline-block; width: 22px; height: 4px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+  .legend .ferry { background: #888; height: 0; border-top: 3px dashed #888; }
+  .lodge-label {
+    background: #fff3cd; border: 1px solid #e0a800; border-radius: 6px;
+    padding: 1px 5px; font-size: 11px; font-weight: 700; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="title">🏍️ 北海道ツーリング 8日間 Plan C ｜ 生駒発・舞鶴⇄小樽フェリー往復 ｜ 道央グランドループ・1日200km目安（実走5日 約890km）</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script>
+  const map = L.map('map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // [lat, lng, name]
+  const days = [
+    { label: '3日目: 小樽→積丹(神威岬)→余市→ニセコ（約175km）', color: '#1e88e5', pts: [
+      [43.190,140.994,'小樽'],[43.195,140.790,'余市'],[43.343,140.349,'神威岬(積丹)'],
+      [42.860,140.690,'ニセコ/倶知安'] ] },
+    { label: '4日目: ニセコ→洞爺湖→昭和新山→登別温泉（約140km）', color: '#2e7d32', pts: [
+      [42.860,140.690,'ニセコ/倶知安'],[42.580,140.830,'洞爺湖'],[42.539,140.866,'昭和新山'],
+      [42.493,141.146,'登別温泉'] ] },
+    { label: '5日目: 登別→支笏湖→占冠→トマム→富良野（約215km）', color: '#f39c12', pts: [
+      [42.493,141.146,'登別温泉'],[42.749,141.355,'支笏湖'],[43.020,142.405,'占冠'],
+      [43.060,142.620,'トマム'],[43.342,142.383,'富良野'] ] },
+    { label: '6日目: 富良野→美瑛→旭川→層雲峡（約165km）', color: '#e53935', pts: [
+      [43.342,142.383,'富良野'],[43.493,142.631,'青い池'],[43.589,142.466,'美瑛'],
+      [43.771,142.365,'旭川'],[43.726,142.996,'層雲峡'] ] },
+    { label: '7日目: 層雲峡→旭川→小樽港（約210km）', color: '#8e24aa', pts: [
+      [43.726,142.996,'層雲峡'],[43.771,142.365,'旭川'],[43.726,142.052,'深川'],
+      [43.190,140.994,'小樽港'] ] }
+  ];
+
+  const allLatLng = [];
+  days.forEach(d => {
+    const line = d.pts.map(p => [p[0], p[1]]);
+    L.polyline(line, { color: d.color, weight: 4, opacity: 0.85 }).addTo(map);
+    d.pts.forEach(p => {
+      allLatLng.push([p[0], p[1]]);
+      L.circleMarker([p[0], p[1]], { radius: 5, color: d.color, fillColor: '#fff', fillOpacity: 1, weight: 2 })
+        .bindTooltip(p[2], { permanent: false }).addTo(map);
+    });
+  });
+
+  // 宿泊地（全て1.5万円以内）
+  const lodges = [
+    [43.190,140.994,'🛏️ 小樽/札幌 0.7〜1.2万（素泊）'],
+    [42.860,140.690,'🛏️ ニセコ 1.0〜1.5万（2食）'],
+    [42.493,141.146,'🛏️ 登別温泉 1.2〜1.5万'],
+    [43.342,142.383,'🛏️ 富良野 1.0〜1.4万'],
+    [43.726,142.996,'🛏️ 層雲峡 1.0〜1.5万']
+  ];
+  lodges.forEach(l => {
+    L.marker([l[0], l[1]]).addTo(map)
+      .bindTooltip(l[2], { permanent: true, direction: 'top', className: 'lodge-label', offset: [0,-6] });
+    allLatLng.push([l[0], l[1]]);
+  });
+
+  // 発着港
+  L.circleMarker([43.190,140.994], { radius: 7, color:'#000', fillColor:'#ffd200', fillOpacity:1, weight:2 })
+    .bindTooltip('⛴️ 発着：小樽港（舞鶴からフェリー往復）', { permanent: true, direction:'left' }).addTo(map);
+
+  map.fitBounds(allLatLng, { padding: [70, 70] });
+
+  // 凡例
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = '<b>Plan C ルート凡例（舞鶴発）</b><br>' +
+      days.map(d => `<i style="background:${d.color}"></i>${d.label}`).join('<br>') +
+      '<br>🛏️ 宿泊地（全て1.5万円以内）' +
+      '<br><i class="ferry"></i>往復フェリー（舞鶴⇄小樽 / 海路）';
+    return div;
+  };
+  legend.addTo(map);
+</script>
+</body>
+</html>
