@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-BM0iwZwAt9dsOoQSetXS7cVlT7zZadK9Ny0WfA/7c9k=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-TSpisefDLw/osykMJGK79K5qYaAdY/Y8MU2gBl+aXNM=' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org https://api.openrouteservice.org https://*.workers.dev https://archive-api.open-meteo.com; worker-src 'self' blob:; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <title>🏍️ ツーリング記録帳</title>
   <meta name="theme-color" content="#1a1a2e" />
@@ -557,6 +557,52 @@
       font-size: 0.75rem;
       color: #aaa;
       margin-top: 2px;
+    }
+
+    .km-chart {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 14px 14px 10px;
+      margin-bottom: 16px;
+    }
+    .km-chart-title {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-bottom: 10px;
+    }
+    .km-chart-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 110px;
+    }
+    .km-bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      min-width: 0;
+    }
+    .km-bar-val {
+      font-size: 0.62rem;
+      color: #eee;
+      margin-bottom: 2px;
+      white-space: nowrap;
+    }
+    .km-bar {
+      width: 100%;
+      max-width: 34px;
+      background: linear-gradient(180deg, #e94560, #a92f47);
+      border-radius: 4px 4px 0 0;
+    }
+    .km-bar.zero { background: #22345c; }
+    .km-bar-lbl {
+      font-size: 0.62rem;
+      color: #aaa;
+      margin-top: 4px;
+      white-space: nowrap;
     }
 
     .search-bar {
@@ -1180,6 +1226,7 @@
         <div class="lbl">総ガソリン代 円</div>
       </div>
     </div>
+    <div class="km-chart" id="km-chart" style="display:none;"></div>
     <input class="search-bar" id="search" type="text" placeholder="🔍 目的地・感想で検索…" />
     <div class="sync-panel">
       <button type="button" class="settings-toggle" id="btn-toggle-settings">
@@ -3360,6 +3407,66 @@
     return String(r.dateFrom || '').startsWith(year) || String(r.dateTo || '').startsWith(year);
   }
 
+  // 走行距離グラフ：年選択時=月別、全期間=年別にバイクkmを集計する
+  // 日毎距離がある記録は日付ベースで正確に割り付け、ない記録は出発日の月/年へ帰属させる
+  function bikeKmBuckets(records, year) {
+    const buckets = new Map();
+    const add = (key, km) => {
+      if (!key || !(km > 0)) return;
+      buckets.set(key, (buckets.get(key) || 0) + km);
+    };
+    records.forEach(r => {
+      const daily = getRecordDailyDistances(r, 0)
+        .filter(d => Number(d.bikeKm) > 0 && /^\d{4}-\d{2}/.test(String(d.date || '')));
+      if (daily.length) {
+        daily.forEach(d => {
+          const dv = String(d.date);
+          if (year) { if (dv.startsWith(year)) add(dv.slice(5, 7), Number(d.bikeKm)); }
+          else add(dv.slice(0, 4), Number(d.bikeKm));
+        });
+        return;
+      }
+      const km = getRecordBikeKm(r);
+      const dv = String(r.dateFrom || r.date || '');
+      if (!/^\d{4}-\d{2}/.test(dv)) return;
+      if (year) { if (dv.startsWith(year)) add(dv.slice(5, 7), km); }
+      else add(dv.slice(0, 4), km);
+    });
+    return buckets;
+  }
+
+  function renderKmChart(records, year) {
+    const el = document.getElementById('km-chart');
+    if (!el) return;
+    const buckets = bikeKmBuckets(records, year);
+    const total = [...buckets.values()].reduce((s, v) => s + v, 0);
+    if (!(total > 0)) {
+      el.style.display = 'none';
+      el.innerHTML = '';
+      return;
+    }
+    let items;
+    if (year) {
+      items = Array.from({ length: 12 }, (_, i) => {
+        const mm = String(i + 1).padStart(2, '0');
+        return { label: `${i + 1}月`, km: buckets.get(mm) || 0 };
+      });
+    } else {
+      items = [...buckets.keys()].sort().map(y => ({ label: `${y}年`, km: buckets.get(y) }));
+    }
+    const max = Math.max(...items.map(it => it.km), 1);
+    el.innerHTML = `
+      <div class="km-chart-title">📊 ${year ? `${escape(year)}年の月別バイク走行距離（km）` : '年別バイク走行距離（km）'}</div>
+      <div class="km-chart-bars">${items.map(it => `
+        <div class="km-bar-col">
+          <div class="km-bar-val">${it.km > 0 ? Math.round(it.km).toLocaleString() : ''}</div>
+          <div class="km-bar${it.km > 0 ? '' : ' zero'}" style="height:${it.km > 0 ? Math.max(4, Math.round(it.km / max * 100)) : 2}%"></div>
+          <div class="km-bar-lbl">${escape(it.label)}</div>
+        </div>`).join('')}
+      </div>`;
+    el.style.display = '';
+  }
+
   function renderList() {
     updateYearOptions();
     const year = document.getElementById('stat-year').value;
@@ -3404,6 +3511,7 @@
     document.getElementById('stat-days').textContent  = totalDays;
     document.getElementById('stat-fuel-eff').textContent = fuelL > 0 && fuelKm > 0 ? (fuelKm / fuelL).toFixed(1) : '—';
     document.getElementById('stat-cost').textContent  = totalCost.toLocaleString();
+    renderKmChart(all, year);
 
     const el = document.getElementById('record-list');
     if (list.length === 0) {
