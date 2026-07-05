@@ -78,6 +78,11 @@ jobs:
         # Deployステップだけの一時エラーが繰り返し起きているため、失敗時は1回だけ自動再試行する
         continue-on-error: true
 
+      - name: Wait before retry
+        if: steps.deployment.outcome == 'failure'
+        # 即時リトライでは同じ一時エラーを引くことがあるため間隔を空ける
+        run: sleep 30
+
       - name: Deploy (retry after transient error)
         id: deployment_retry
         if: steps.deployment.outcome == 'failure'
